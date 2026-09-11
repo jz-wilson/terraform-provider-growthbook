@@ -30,7 +30,7 @@ func TestAccProjectResource_live(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	id, name := findExistingProject(t)
+	id, name, description := findExistingProject(t)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -62,8 +62,11 @@ resource "growthbook_project" "imported" {
 				),
 			},
 			{
-				Config: fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name = %q\n}", name),
-				Check:  resource.TestCheckResourceAttr("growthbook_project.imported", "description", ""),
+				// description is Optional+Computed, so reverting requires
+				// setting it back explicitly: omitting it here would leave
+				// the test-set value in place instead of restoring it.
+				Config: fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name        = %q\n  description = %q\n}", name, description),
+				Check:  resource.TestCheckResourceAttr("growthbook_project.imported", "description", description),
 			},
 			{
 				Config: `
@@ -83,7 +86,7 @@ removed {
 // existing project with a tiny direct HTTP call: growthbook-go does not
 // expose a list-projects method, and a free-plan organization is guaranteed
 // to have exactly one.
-func findExistingProject(t *testing.T) (id, name string) {
+func findExistingProject(t *testing.T) (id, name, description string) {
 	t.Helper()
 
 	req, err := http.NewRequest(http.MethodGet, os.Getenv("GROWTHBOOK_API_URL")+"/v1/projects", nil)
@@ -105,8 +108,9 @@ func findExistingProject(t *testing.T) (id, name string) {
 
 	var out struct {
 		Projects []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
 		} `json:"projects"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -115,5 +119,5 @@ func findExistingProject(t *testing.T) (id, name string) {
 	if len(out.Projects) == 0 {
 		t.Fatal("live GrowthBook instance has no existing project to import")
 	}
-	return out.Projects[0].ID, out.Projects[0].Name
+	return out.Projects[0].ID, out.Projects[0].Name, out.Projects[0].Description
 }

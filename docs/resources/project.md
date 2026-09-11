@@ -35,9 +35,9 @@ resource "growthbook_project" "example" {
 
 ### Optional
 
-- `description` (String) Description of the project.
+- `description` (String) Description of the project. Omitting this from config leaves whatever GrowthBook currently holds untouched (useful for imported projects); set it to `""` explicitly to clear it.
 - `public_id` (String) Stable identifier used in feature flag payloads. GrowthBook derives one from `name` when left unset.
-- `restrict_access` (Boolean) Restrict this project to only members explicitly granted access.
+- `restrict_access` (Boolean) Restrict this project to only members explicitly granted access. Omitting this from config leaves whatever GrowthBook currently holds untouched.
 - `settings` (Attributes) Per-project statistics settings overriding the organization defaults. Left unset, GrowthBook reports the organization defaults here once the project is created. (see [below for nested schema](#nestedatt--settings))
 
 ### Read-Only

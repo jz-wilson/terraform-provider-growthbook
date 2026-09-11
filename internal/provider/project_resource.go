@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -73,7 +74,11 @@ func (r *ProjectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"description": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Description of the project.",
+				Computed:            true,
+				MarkdownDescription: "Description of the project. Omitting this from config leaves whatever GrowthBook currently holds untouched (useful for imported projects); set it to `\"\"` explicitly to clear it.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"public_id": schema.StringAttribute{
 				Optional:            true,
@@ -85,7 +90,11 @@ func (r *ProjectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"restrict_access": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Restrict this project to only members explicitly granted access.",
+				Computed:            true,
+				MarkdownDescription: "Restrict this project to only members explicitly granted access. Omitting this from config leaves whatever GrowthBook currently holds untouched.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"settings": schema.SingleNestedAttribute{
 				Optional:            true,
@@ -245,11 +254,11 @@ func projectRequestFromModel(data ProjectResourceModel) growthbook.ProjectReques
 func modelFromProject(data *ProjectResourceModel, project *growthbook.Project) {
 	data.ID = types.StringValue(project.ID)
 	data.Name = types.StringValue(project.Name)
-	if project.Description == "" {
-		data.Description = types.StringNull()
-	} else {
-		data.Description = types.StringValue(project.Description)
-	}
+	// Always a known, non-null value (never types.StringNull()): description
+	// is Optional+Computed with UseStateForUnknown, so an explicit "" in
+	// config must round-trip to exactly "" here, not null, or the framework
+	// reports "provider produced inconsistent result after apply".
+	data.Description = types.StringValue(project.Description)
 	data.PublicID = types.StringValue(project.PublicID)
 	data.RestrictAccess = types.BoolPointerValue(project.RestrictAccess)
 	data.DateCreated = stringOrNull(project.DateCreated)
