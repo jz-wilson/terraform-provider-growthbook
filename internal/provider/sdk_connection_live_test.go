@@ -57,12 +57,12 @@ resource "growthbook_sdk_connection" "test" {
   name            = %q
   language        = "javascript"
   environment     = "production"
-  encrypt_payload = true
+  hash_secure_attributes = true
 }
 `, updatedName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "name", updatedName),
-					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "encrypt_payload", "true"),
+					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "hash_secure_attributes", "true"),
 				),
 			},
 			{
