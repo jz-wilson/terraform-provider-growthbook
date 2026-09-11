@@ -44,7 +44,7 @@ func (f *fakeSDKConnectionServer) handleCollection(w http.ResponseWriter, r *htt
 		for _, v := range f.byID {
 			list = append(list, v)
 		}
-		writeJSON(w, map[string]any{"connections": list})
+		sdkWriteJSON(w, map[string]any{"connections": list})
 	case http.MethodPost:
 		var req map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -55,7 +55,7 @@ func (f *fakeSDKConnectionServer) handleCollection(w http.ResponseWriter, r *htt
 		id := fmt.Sprintf("sdk_%d", f.nextID)
 		conn := sdkConnectionFromRequest(id, req)
 		f.byID[id] = conn
-		writeJSON(w, map[string]any{"sdkConnection": conn})
+		sdkWriteJSON(w, map[string]any{"sdkConnection": conn})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -71,14 +71,14 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 	case http.MethodGet:
 		conn, ok := f.byID[id]
 		if !ok {
-			writeAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeJSON(w, map[string]any{"sdkConnection": conn})
+		sdkWriteJSON(w, map[string]any{"sdkConnection": conn})
 	case http.MethodPut:
 		existing, ok := f.byID[id]
 		if !ok {
-			writeAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w, http.StatusNotFound, "not found")
 			return
 		}
 		var req map[string]any
@@ -93,10 +93,10 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 		merged["proxySigningKey"] = existing["proxySigningKey"]
 		merged["dateCreated"] = existing["dateCreated"]
 		f.byID[id] = merged
-		writeJSON(w, map[string]any{"sdkConnection": merged})
+		sdkWriteJSON(w, map[string]any{"sdkConnection": merged})
 	case http.MethodDelete:
 		if _, ok := f.byID[id]; !ok {
-			writeAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w, http.StatusNotFound, "not found")
 			return
 		}
 		delete(f.byID, id)
@@ -117,11 +117,11 @@ func sdkConnectionFromRequest(id string, req map[string]any) map[string]any {
 		"languages":       []string{language},
 		"environment":     req["environment"],
 		"project":         "",
-		"encryptPayload":  boolOr(req["encryptPayload"], false),
+		"encryptPayload":  sdkBoolOr(req["encryptPayload"], false),
 		"encryptionKey":   "enc_" + id,
 		"key":             "sdk-" + id,
-		"proxyEnabled":    boolOr(req["proxyEnabled"], false),
-		"proxyHost":       stringOr(req["proxyHost"], ""),
+		"proxyEnabled":    sdkBoolOr(req["proxyEnabled"], false),
+		"proxyHost":       sdkStringOr(req["proxyHost"], ""),
 		"proxySigningKey": "proxysign_" + id,
 		"connected":       false,
 	}
@@ -155,26 +155,26 @@ func sdkConnectionFromRequest(id string, req map[string]any) map[string]any {
 	return conn
 }
 
-func boolOr(v any, def bool) bool {
+func sdkBoolOr(v any, def bool) bool {
 	if b, ok := v.(bool); ok {
 		return b
 	}
 	return def
 }
 
-func stringOr(v any, def string) string {
+func sdkStringOr(v any, def string) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
 	return def
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func sdkWriteJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeAPIError(w http.ResponseWriter, status int, message string) {
+func sdkWriteAPIError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"message": message})
