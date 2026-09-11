@@ -54,15 +54,15 @@ resource "growthbook_sdk_connection" "test" {
 			{
 				Config: fmt.Sprintf(`
 resource "growthbook_sdk_connection" "test" {
-  name            = %q
-  language        = "javascript"
-  environment     = "production"
-  hash_secure_attributes = true
+  name        = %q
+  language    = "javascript"
+  environment = "production"
+  sdk_version = "1.0.0"
 }
 `, updatedName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "name", updatedName),
-					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "hash_secure_attributes", "true"),
+					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "sdk_version", "1.0.0"),
 				),
 			},
 			{
