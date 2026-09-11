@@ -107,12 +107,17 @@ func (p *GrowthBookProvider) Configure(ctx context.Context, req provider.Configu
 
 // Resources lists every managed resource this provider offers.
 func (p *GrowthBookProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		NewEnvironmentResource,
+	}
 }
 
 // DataSources lists every data source this provider offers.
 func (p *GrowthBookProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewEnvironmentDataSource,
+		NewEnvironmentsDataSource,
+	}
 }
 
 // New returns a provider constructor for the given version string.
