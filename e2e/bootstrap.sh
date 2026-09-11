@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
 # Bootstrap a fresh GrowthBook instance and print a secret API key.
 #
 # Creates the first organization and user through the unauthenticated

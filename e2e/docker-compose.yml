@@ -1,3 +1,6 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
 # Local GrowthBook for integration and e2e tests.
 #
 #   docker compose -f e2e/docker-compose.yml up -d
