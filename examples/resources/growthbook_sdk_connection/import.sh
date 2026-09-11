@@ -1,0 +1,1 @@
+terraform import growthbook_sdk_connection.production sdk_abc123

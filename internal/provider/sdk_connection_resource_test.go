@@ -109,21 +109,21 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 func sdkConnectionFromRequest(id string, req map[string]any) map[string]any {
 	language, _ := req["language"].(string)
 	conn := map[string]any{
-		"id":               id,
-		"dateCreated":      "2026-01-01T00:00:00.000Z",
-		"dateUpdated":      "2026-01-01T00:00:00.000Z",
-		"name":             req["name"],
-		"organization":     "org_test",
-		"languages":        []string{language},
-		"environment":      req["environment"],
-		"project":          "",
-		"encryptPayload":   boolOr(req["encryptPayload"], false),
-		"encryptionKey":    "enc_" + id,
-		"key":              "sdk-" + id,
-		"proxyEnabled":     boolOr(req["proxyEnabled"], false),
-		"proxyHost":        stringOr(req["proxyHost"], ""),
-		"proxySigningKey":  "proxysign_" + id,
-		"connected":        false,
+		"id":              id,
+		"dateCreated":     "2026-01-01T00:00:00.000Z",
+		"dateUpdated":     "2026-01-01T00:00:00.000Z",
+		"name":            req["name"],
+		"organization":    "org_test",
+		"languages":       []string{language},
+		"environment":     req["environment"],
+		"project":         "",
+		"encryptPayload":  boolOr(req["encryptPayload"], false),
+		"encryptionKey":   "enc_" + id,
+		"key":             "sdk-" + id,
+		"proxyEnabled":    boolOr(req["proxyEnabled"], false),
+		"proxyHost":       stringOr(req["proxyHost"], ""),
+		"proxySigningKey": "proxysign_" + id,
+		"connected":       false,
 	}
 	if v, ok := req["sdkVersion"]; ok {
 		conn["sdkVersion"] = v
