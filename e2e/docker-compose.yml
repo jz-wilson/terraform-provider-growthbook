@@ -1,0 +1,41 @@
+# Local GrowthBook for integration and e2e tests.
+#
+#   docker compose -f e2e/docker-compose.yml up -d
+#   export GROWTHBOOK_API_KEY=$(e2e/bootstrap.sh)
+#   export GROWTHBOOK_API_URL=http://localhost:3100/api
+#   make test.integration
+#
+# The image tag is pinned to a git SHA rather than "latest" so a GrowthBook
+# release cannot silently change the API under the tests. Bump deliberately.
+services:
+  mongo:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  growthbook:
+    image: growthbook/growthbook:git-095f616
+    ports:
+      - "3000:3000"
+      - "3100:3100"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      API_RATE_LIMIT_MAX: "6000"
+      MONGODB_URI: mongodb://root:password@mongo:27017/growthbook?authSource=admin
+      APP_ORIGIN: http://localhost:3000
+      API_HOST: http://localhost:3100
+      JWT_SECRET: e2e-only-not-a-real-secret
+      ENCRYPTION_KEY: e2e-only-not-a-real-secret
+    # The image ships no shell, wget, or curl; node is the only tool available.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3100/healthcheck').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 60

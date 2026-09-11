@@ -1,3 +1,5 @@
-## 0.1.0 (Unreleased)
+# Changelog
 
-FEATURES:
+## Unreleased
+
+- Initial provider scaffold with `api_key` / `api_url` configuration.
