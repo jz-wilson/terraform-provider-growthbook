@@ -109,6 +109,7 @@ func (p *GrowthBookProvider) Configure(ctx context.Context, req provider.Configu
 func (p *GrowthBookProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewEnvironmentResource,
+		NewProjectResource,
 	}
 }
 
@@ -117,6 +118,7 @@ func (p *GrowthBookProvider) DataSources(_ context.Context) []func() datasource.
 	return []func() datasource.DataSource{
 		NewEnvironmentDataSource,
 		NewEnvironmentsDataSource,
+		NewProjectDataSource,
 	}
 }
 

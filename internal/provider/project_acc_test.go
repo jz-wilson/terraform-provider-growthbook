@@ -59,14 +59,14 @@ resource "growthbook_project" "imported" {
 				Check:  resource.TestCheckResourceAttr("growthbook_project.imported", "description", ""),
 			},
 			{
-				Config: fmt.Sprintf(`
+				Config: `
 removed {
   from = growthbook_project.imported
 
   lifecycle {
     destroy = false
   }
-}`),
+}`,
 			},
 		},
 	})

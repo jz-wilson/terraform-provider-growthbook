@@ -174,6 +174,7 @@ resource "growthbook_project" "test" {
 					resource.TestCheckResourceAttrPair("data.growthbook_project.test", "name", "growthbook_project.test", "name"),
 					resource.TestCheckResourceAttrPair("data.growthbook_project.test", "description", "growthbook_project.test", "description"),
 				),
+				ExpectNonEmptyPlan: true,
 			},
 			{
 				ResourceName:      "growthbook_project.test",

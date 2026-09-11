@@ -1,0 +1,1 @@
+terraform import growthbook_project.example prj_abc123
