@@ -95,6 +95,16 @@ func newFakeEnvironmentServer() *httptest.Server {
 				return
 			}
 			applyFakeEnvironmentRequest(e, req)
+			// Mirrors an observed GrowthBook quirk: an environment created
+			// (or last touched) with no projects can come back with a nil
+			// projects slice from one call and a non-nil empty slice from
+			// another, for the same underlying "no projects" state. Any PUT
+			// here flips a still-empty projects to a non-nil empty slice, so
+			// tests exercise the same null-vs-empty-set drift the provider
+			// must absorb.
+			if e.Projects == nil {
+				e.Projects = []string{}
+			}
 			writeJSON(w, http.StatusOK, map[string]any{"environment": *e})
 		case http.MethodDelete:
 			if !ok {
