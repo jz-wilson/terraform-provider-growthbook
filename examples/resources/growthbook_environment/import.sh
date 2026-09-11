@@ -1,0 +1,1 @@
+terraform import growthbook_environment.staging staging

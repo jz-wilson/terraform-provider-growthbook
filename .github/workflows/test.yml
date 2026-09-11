@@ -67,6 +67,7 @@ jobs:
           - '1.16.*'
     env:
       GROWTHBOOK_API_URL: http://localhost:3100/api
+      GROWTHBOOK_LIVE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
