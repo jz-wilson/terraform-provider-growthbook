@@ -71,7 +71,11 @@ type featureModel struct {
 // nil/empty input so unset optional fields round-trip as null rather than
 // an empty collection.
 func stringSetValue(ctx context.Context, values []string, diags *diag.Diagnostics) types.Set {
-	if values == nil {
+	// GrowthBook is inconsistent about whether an unset set-valued field
+	// comes back as a JSON null (decoded to a nil slice) or an empty JSON
+	// array (decoded to a non-nil, zero-length slice); both count as
+	// "unset" for our Optional, non-Computed set attributes.
+	if len(values) == 0 {
 		return types.SetNull(types.StringType)
 	}
 	set, d := types.SetValueFrom(ctx, types.StringType, values)
@@ -140,10 +144,12 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		ExperimentID:    optionalString(r.ExperimentID),
 		RuleID:          types.StringValue(r.ID),
 	}
+	// enabled is Optional+Computed with a default of true, matching
+	// GrowthBook's own default for a rule that doesn't specify it.
 	if r.Enabled != nil {
 		out.Enabled = types.BoolValue(*r.Enabled)
 	} else {
-		out.Enabled = types.BoolNull()
+		out.Enabled = types.BoolValue(true)
 	}
 	if r.Coverage != nil {
 		out.Coverage = types.Float64Value(*r.Coverage)

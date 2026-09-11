@@ -38,7 +38,11 @@ func featureRuleSchema() schema.ListNestedAttribute {
 					Validators:          []validator.String{stringOneOf(featureRuleTypes)},
 				},
 				"description": schema.StringAttribute{Optional: true},
-				"enabled":     schema.BoolAttribute{Optional: true},
+				"enabled": schema.BoolAttribute{
+					Optional: true,
+					Computed: true,
+					Default:  booldefault.StaticBool(true),
+				},
 				"condition": schema.StringAttribute{
 					Optional:            true,
 					MarkdownDescription: "JSON targeting condition. Whitespace/property-order differences are ignored.",
