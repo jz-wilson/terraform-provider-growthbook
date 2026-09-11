@@ -82,7 +82,7 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if state.Rules == nil && len(newState.Rules) == 0 {
 		newState.Rules = nil
 	}
-	if state.Environments == nil {
+	if state.Environments == nil && len(newState.Environments) == 0 {
 		newState.Environments = nil
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newState)...)

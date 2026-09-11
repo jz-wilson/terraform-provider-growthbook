@@ -232,6 +232,10 @@ resource "growthbook_feature" "test" {
   default_value = "false"
   description   = "updated description"
 
+  environments = {
+    production = { enabled = true }
+  }
+
   rules = [
     {
       type           = "rollout"
@@ -266,6 +270,10 @@ resource "growthbook_feature" "test" {
   value_type    = "boolean"
   default_value = "false"
   description   = "updated description"
+
+  environments = {
+    production = { enabled = true }
+  }
 
   rules = [
     {
