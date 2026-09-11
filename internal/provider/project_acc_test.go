@@ -1,0 +1,112 @@
+// Copyright (c) 2026 Johnzell Wilson
+// SPDX-License-Identifier: MPL-2.0
+
+package provider
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+)
+
+// TestAccProjectResource_live imports the organization's existing default
+// project rather than creating one. A licensed-free GrowthBook instance
+// allows exactly one project ("My First Project", created automatically);
+// CreateProject on such a plan returns HTTP 402. So this test finds that
+// project, imports it, edits and reverts its description, then removes it
+// from state (without deleting the real project) via a `removed` block so
+// the framework's end-of-test destroy has nothing left to destroy.
+//
+// Gated on GROWTHBOOK_LIVE=1, set by the CI acceptance job; skipped locally
+// by default so `go test` needs no live GrowthBook.
+func TestAccProjectResource_live(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") != "1" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run against a live GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	id, name := findExistingProject(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		// The imported project is never created or destroyed by this test,
+		// so there is nothing for the framework to clean up.
+		CheckDestroy: func(*terraform.State) error { return nil },
+		Steps: []resource.TestStep{
+			{
+				Config:             fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name = %q\n}", name),
+				ResourceName:       "growthbook_project.imported",
+				ImportState:        true,
+				ImportStateId:      id,
+				ImportStatePersist: true,
+				ImportStateVerify:  true,
+			},
+			{
+				Config: fmt.Sprintf(`
+resource "growthbook_project" "imported" {
+  name        = %q
+  description = "set by terraform-provider-growthbook acceptance test"
+}`, name),
+				Check: resource.TestCheckResourceAttr("growthbook_project.imported", "description", "set by terraform-provider-growthbook acceptance test"),
+			},
+			{
+				Config: fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name = %q\n}", name),
+				Check:  resource.TestCheckResourceAttr("growthbook_project.imported", "description", ""),
+			},
+			{
+				Config: fmt.Sprintf(`
+removed {
+  from = growthbook_project.imported
+
+  lifecycle {
+    destroy = false
+  }
+}`),
+			},
+		},
+	})
+}
+
+// findExistingProject looks up the id and name of the organization's
+// existing project with a tiny direct HTTP call: growthbook-go does not
+// expose a list-projects method, and a free-plan organization is guaranteed
+// to have exactly one.
+func findExistingProject(t *testing.T) (id, name string) {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, os.Getenv("GROWTHBOOK_API_URL")+"/v1/projects", nil)
+	if err != nil {
+		t.Fatalf("building projects list request: %s", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("GROWTHBOOK_API_KEY"))
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("listing projects: %s", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("listing projects: unexpected status %d", resp.StatusCode)
+	}
+
+	var out struct {
+		Projects []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"projects"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decoding projects list: %s", err)
+	}
+	if len(out.Projects) == 0 {
+		t.Fatal("live GrowthBook instance has no existing project to import")
+	}
+	return out.Projects[0].ID, out.Projects[0].Name
+}
