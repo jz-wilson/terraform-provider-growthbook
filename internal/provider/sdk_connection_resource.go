@@ -151,6 +151,15 @@ func (r *sdkConnectionResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	// The create response can omit option fields the request left unset,
+	// while a subsequent GET always reports their resolved defaults. Refetch
+	// so the state written here matches what Read/import would produce.
+	conn, err = r.client.GetSDKConnection(ctx, conn.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to read newly created SDK connection", err.Error())
+		return
+	}
+
 	state, diags := sdkConnectionFromAPI(ctx, conn, plan.Language.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -208,6 +217,14 @@ func (r *sdkConnectionResource) Update(ctx context.Context, req resource.UpdateR
 	conn, err := r.client.UpdateSDKConnection(ctx, state.ID.ValueString(), apiReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to update SDK connection", err.Error())
+		return
+	}
+
+	// Same asymmetry as Create: refetch so state matches what Read/import
+	// would produce for the same connection.
+	conn, err = r.client.GetSDKConnection(ctx, conn.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to read updated SDK connection", err.Error())
 		return
 	}
 
