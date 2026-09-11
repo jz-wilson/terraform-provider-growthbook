@@ -110,6 +110,7 @@ func (p *GrowthBookProvider) Resources(_ context.Context) []func() resource.Reso
 	return []func() resource.Resource{
 		NewEnvironmentResource,
 		NewProjectResource,
+		NewFeatureResource,
 		newSDKConnectionResource,
 	}
 }
@@ -120,6 +121,7 @@ func (p *GrowthBookProvider) DataSources(_ context.Context) []func() datasource.
 		NewEnvironmentDataSource,
 		NewEnvironmentsDataSource,
 		NewProjectDataSource,
+		NewFeatureDataSource,
 		newSDKConnectionDataSource,
 		newSDKConnectionsDataSource,
 	}
