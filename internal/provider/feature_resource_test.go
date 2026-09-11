@@ -39,31 +39,31 @@ func newFakeFeatureServer() (*httptest.Server, *fakeFeatureServer) {
 	return httptest.NewServer(mux), f
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+func featureWriteJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func writeAPIError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]any{"message": message})
+func featureWriteAPIError(w http.ResponseWriter, status int, message string) {
+	featureWriteJSON(w, status, map[string]any{"message": message})
 }
 
 func (f *fakeFeatureServer) handleCollection(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeAPIError(w, http.StatusMethodNotAllowed, "unsupported method")
+		featureWriteAPIError(w, http.StatusMethodNotAllowed, "unsupported method")
 		return
 	}
 	var req growthbook.FeatureRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeAPIError(w, http.StatusBadRequest, err.Error())
+		featureWriteAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, exists := f.features[req.ID]; exists {
-		writeAPIError(w, http.StatusBadRequest, "feature already exists")
+		featureWriteAPIError(w, http.StatusBadRequest, "feature already exists")
 		return
 	}
 	feature := &growthbook.Feature{
@@ -75,12 +75,12 @@ func (f *fakeFeatureServer) handleCollection(w http.ResponseWriter, r *http.Requ
 		DateUpdated:  "2026-01-01T00:00:00Z",
 		Revision:     &growthbook.FeatureRevision{Version: 1},
 	}
-	applyRequest(feature, req)
+	applyFeatureRequest(feature, req)
 	f.features[feature.ID] = feature
-	writeJSON(w, http.StatusOK, map[string]any{"feature": feature})
+	featureWriteJSON(w, http.StatusOK, map[string]any{"feature": feature})
 }
 
-func applyRequest(feature *growthbook.Feature, req growthbook.FeatureRequest) {
+func applyFeatureRequest(feature *growthbook.Feature, req growthbook.FeatureRequest) {
 	if req.Description != nil {
 		feature.Description = *req.Description
 	}
@@ -124,41 +124,41 @@ func (f *fakeFeatureServer) handleItem(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		if !ok {
-			writeAPIError(w, http.StatusNotFound, "could not find feature")
+			featureWriteAPIError(w, http.StatusNotFound, "could not find feature")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"feature": feature})
+		featureWriteJSON(w, http.StatusOK, map[string]any{"feature": feature})
 	case http.MethodPost:
 		if !ok {
-			writeAPIError(w, http.StatusNotFound, "could not find feature")
+			featureWriteAPIError(w, http.StatusNotFound, "could not find feature")
 			return
 		}
 		var req growthbook.FeatureRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			featureWriteAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if req.DefaultValue != "" {
 			feature.DefaultValue = req.DefaultValue
 		}
-		applyRequest(feature, req)
+		applyFeatureRequest(feature, req)
 		feature.Revision.Version++
 		feature.DateUpdated = "2026-01-02T00:00:00Z"
-		writeJSON(w, http.StatusOK, map[string]any{"feature": feature})
+		featureWriteJSON(w, http.StatusOK, map[string]any{"feature": feature})
 	case http.MethodDelete:
 		if !ok {
-			writeAPIError(w, http.StatusNotFound, "could not find feature")
+			featureWriteAPIError(w, http.StatusNotFound, "could not find feature")
 			return
 		}
 		if f.archiveRequiredOnce[id] {
 			delete(f.archiveRequiredOnce, id)
-			writeAPIError(w, http.StatusForbidden, "please archive the feature first")
+			featureWriteAPIError(w, http.StatusForbidden, "please archive the feature first")
 			return
 		}
 		delete(f.features, id)
 		w.WriteHeader(http.StatusOK)
 	default:
-		writeAPIError(w, http.StatusMethodNotAllowed, "unsupported method")
+		featureWriteAPIError(w, http.StatusMethodNotAllowed, "unsupported method")
 	}
 }
 
