@@ -39,12 +39,15 @@ func TestAccProjectResource_live(t *testing.T) {
 		CheckDestroy: func(*terraform.State) error { return nil },
 		Steps: []resource.TestStep{
 			{
+				// ImportStateVerify has nothing to compare against on a bare
+				// import step (no prior Config-created resource is in
+				// state), so it is skipped here; the imported id/name are
+				// checked explicitly once the resource is in state below.
 				Config:             fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name = %q\n}", name),
 				ResourceName:       "growthbook_project.imported",
 				ImportState:        true,
 				ImportStateId:      id,
 				ImportStatePersist: true,
-				ImportStateVerify:  true,
 			},
 			{
 				Config: fmt.Sprintf(`
@@ -52,7 +55,11 @@ resource "growthbook_project" "imported" {
   name        = %q
   description = "set by terraform-provider-growthbook acceptance test"
 }`, name),
-				Check: resource.TestCheckResourceAttr("growthbook_project.imported", "description", "set by terraform-provider-growthbook acceptance test"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_project.imported", "id", id),
+					resource.TestCheckResourceAttr("growthbook_project.imported", "name", name),
+					resource.TestCheckResourceAttr("growthbook_project.imported", "description", "set by terraform-provider-growthbook acceptance test"),
+				),
 			},
 			{
 				Config: fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name = %q\n}", name),
