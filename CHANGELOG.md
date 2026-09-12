@@ -1,5 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (Unreleased)
 
-- Initial provider scaffold with `api_key` / `api_url` configuration.
+FEATURES:
+
+* **New Resource:** `growthbook_project`
+* **New Data Source:** `growthbook_project`
+* **New Resource:** `growthbook_environment`
+* **New Data Source:** `growthbook_environment`
+* **New Data Source:** `growthbook_environments`
+* **New Resource:** `growthbook_feature`
+* **New Data Source:** `growthbook_feature`
+* **New Resource:** `growthbook_sdk_connection`
+* **New Data Source:** `growthbook_sdk_connection`
+* **New Data Source:** `growthbook_sdk_connections`
+
+NOTES:
+
+* An unlicensed GrowthBook organization is limited to one project and no custom environments. Creating a second `growthbook_project`, or an environment beyond the default set, on such an organization returns HTTP 402 from the GrowthBook API and the apply fails.
+* `growthbook_sdk_connection` exposes `encrypt_payload` and `hash_secure_attributes`, which require a paid GrowthBook plan. On an unlicensed organization, setting either to `true` fails the apply with HTTP 400 ("requires premium subscription").
+* Deleting a `growthbook_feature` performs a hard delete. If GrowthBook refuses because the feature is live (HTTP 403, "archive the feature first"), the provider archives the feature and retries the delete once.
+* When `rules` is set on `growthbook_feature`, it is authoritative: each apply sends the full ordered list and replaces every rule on the feature across all environments (each rule carries its own `all_environments` / `environments` scope). Leave `rules` unset to manage rules outside Terraform; set `rules = []` to remove them all.

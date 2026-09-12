@@ -52,6 +52,17 @@ environments) with HTTP 402; tests that need more skip or adapt.
 To use a locally built provider, add a `dev_overrides` block to your
 `~/.terraformrc` pointing `jz-wilson/growthbook` at `$GOBIN`.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, test tiers,
+and the versioning and deprecation policy this provider follows.
+
+## Schema coverage
+
+[COVERAGE.md](COVERAGE.md) tracks, field by field, which GrowthBook API
+attributes each resource and data source models, and which are not yet
+modelled.
+
 ## License
 
 MPL-2.0 (inherited from the HashiCorp scaffolding template).
