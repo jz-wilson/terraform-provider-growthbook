@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
 )
@@ -223,6 +224,9 @@ data "growthbook_feature" "test" {
 					resource.TestCheckResourceAttrSet("growthbook_feature.test", "rules.0.rule_id"),
 					resource.TestCheckResourceAttr("data.growthbook_feature.test", "rules.#", "2"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: fakeAPIProviderConfig() + `
@@ -259,6 +263,9 @@ resource "growthbook_feature" "test" {
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.type", "rollout"),
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.1.type", "force"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				ResourceName:      "growthbook_feature.test",

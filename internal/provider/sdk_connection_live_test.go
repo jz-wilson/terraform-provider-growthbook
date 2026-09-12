@@ -8,9 +8,10 @@ import (
 	"os"
 	"regexp"
 	"testing"
-	"time"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 // sdkConnectionKeyPrefixRegexp matches the "sdk-" prefix GrowthBook uses for
@@ -30,7 +31,7 @@ func TestAccSDKConnectionResource_live(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-sdk-conn-%d", time.Now().UnixNano())
+	name := acctest.RandomWithPrefix("tf-acc")
 	updatedName := name + "-updated"
 
 	resource.Test(t, resource.TestCase{
@@ -50,6 +51,9 @@ resource "growthbook_sdk_connection" "test" {
 					resource.TestCheckResourceAttrSet("growthbook_sdk_connection.test", "id"),
 					resource.TestMatchResourceAttr("growthbook_sdk_connection.test", "key", sdkConnectionKeyPrefixRegexp()),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: fmt.Sprintf(`
@@ -64,6 +68,9 @@ resource "growthbook_sdk_connection" "test" {
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "name", updatedName),
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "sdk_version", "1.0.0"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				ResourceName:            "growthbook_sdk_connection.test",

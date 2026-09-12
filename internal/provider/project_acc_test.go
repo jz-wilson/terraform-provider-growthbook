@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
@@ -60,6 +61,9 @@ resource "growthbook_project" "imported" {
 					resource.TestCheckResourceAttr("growthbook_project.imported", "name", name),
 					resource.TestCheckResourceAttr("growthbook_project.imported", "description", "set by terraform-provider-growthbook acceptance test"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				// description is Optional+Computed, so reverting requires
@@ -67,6 +71,9 @@ resource "growthbook_project" "imported" {
 				// the test-set value in place instead of restoring it.
 				Config: fmt.Sprintf("resource \"growthbook_project\" \"imported\" {\n  name        = %q\n  description = %q\n}", name, description),
 				Check:  resource.TestCheckResourceAttr("growthbook_project.imported", "description", description),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: `

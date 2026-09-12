@@ -89,6 +89,15 @@ jobs:
       - env:
           TF_ACC: "1"
         run: go test -v -cover -timeout 20m ./internal/provider/
+      - name: Sweep leaked tf-acc-* objects
+        # Runs even when the acceptance tests above failed or were
+        # cancelled: a mid-test failure can leave a growthbook_feature or
+        # growthbook_sdk_connection created but never destroyed. The
+        # sweepers in internal/provider/sweeper_test.go delete only objects
+        # whose key/name starts with tf-acc-, so this never touches
+        # anything else in the compose GrowthBook instance.
+        if: always()
+        run: go test ./internal/provider -v -sweep=all -timeout 10m
       - name: GrowthBook logs on failure
         if: failure()
         run: docker compose -f e2e/docker-compose.yml logs --no-color growthbook | tail -200

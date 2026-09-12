@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 // testAccLivePreCheck additionally requires GROWTHBOOK_LIVE=1, opting these
@@ -124,17 +125,26 @@ removed {
 				// changing anything.
 				Config: importCfg,
 				Check:  resource.TestCheckResourceAttr("growthbook_environment.production", "id", "production"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				// Persist the imported state, then change the description.
 				Config: updateCfg,
 				Check:  resource.TestCheckResourceAttr("growthbook_environment.production", "description", "Managed by TestAccEnvironmentResource_live_production"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				// Revert the description back to what "production" starts
 				// with on a fresh GrowthBook instance.
 				Config: revertCfg,
 				Check:  resource.TestCheckResourceAttr("growthbook_environment.production", "description", "Production"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				// Drop it from state without deleting it. See the doc
