@@ -4,7 +4,7 @@ A Terraform and OpenTofu provider for [GrowthBook](https://www.growthbook.io/),
 built on the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework)
 and the shared [growthbook-go](https://github.com/jz-wilson/growthbook-go)
 client that also powers the
-[Crossplane provider](https://github.com/jz-wilson/provider-growthbook).
+[Crossplane provider](https://github.com/jz-wilson/crossplane-provider-growthbook).
 
 ```hcl
 terraform {
