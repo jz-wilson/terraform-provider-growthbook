@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 // TestAccFeatureResource_live exercises the resource and data source against
@@ -22,7 +23,7 @@ func TestAccFeatureResource_live(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	key := fmt.Sprintf("ft_tf_live_%d", time.Now().UnixNano())
+	key := acctest.RandomWithPrefix("tf-acc")
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -74,6 +75,9 @@ data "growthbook_feature" "test" {
 					resource.TestCheckResourceAttr("data.growthbook_feature.test", "value_type", "boolean"),
 					resource.TestCheckResourceAttr("data.growthbook_feature.test", "rules.#", "2"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				// Update the description and reorder/modify the rules.
@@ -112,6 +116,9 @@ resource "growthbook_feature" "test" {
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.1.type", "force"),
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.1.description", "US force, updated"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				ResourceName:      "growthbook_feature.test",

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
 )
@@ -157,6 +158,9 @@ resource "growthbook_project" "test" {
 					resource.TestCheckResourceAttr("growthbook_project.test", "settings.stats_engine", "bayesian"),
 					resource.TestCheckResourceAttr("growthbook_project.test", "settings.confidence_level", "0.95"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: `

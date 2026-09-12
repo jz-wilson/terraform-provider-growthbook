@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 // TestAccEnvironmentResource exercises full CRUD for growthbook_environment
@@ -42,6 +43,9 @@ resource "growthbook_environment" "staging" {
 					resource.TestCheckResourceAttr("growthbook_environment.staging", "projects.#", "1"),
 					resource.TestCheckResourceAttr("growthbook_environment.staging", "projects.0", "proj_1"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				ResourceName:      "growthbook_environment.staging",
@@ -62,6 +66,9 @@ resource "growthbook_environment" "staging" {
 					resource.TestCheckResourceAttr("growthbook_environment.staging", "description", "Staging (updated)"),
 					resource.TestCheckResourceAttr("growthbook_environment.staging", "toggle_on_list", "false"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 		},
 	})
@@ -91,6 +98,9 @@ resource "growthbook_environment" "child" {
 					resource.TestCheckResourceAttr("growthbook_environment.child", "id", "child"),
 					resource.TestCheckResourceAttr("growthbook_environment.child", "parent", "production"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: `
@@ -102,6 +112,9 @@ resource "growthbook_environment" "child" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_environment.child", "id", "child2"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 		},
 	})

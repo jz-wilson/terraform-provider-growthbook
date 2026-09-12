@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 // fakeSDKConnectionServer is a minimal in-memory stand-in for the GrowthBook
@@ -212,6 +213,9 @@ resource "growthbook_sdk_connection" "test" {
 					resource.TestCheckResourceAttrSet("growthbook_sdk_connection.test", "encryption_key"),
 					resource.TestCheckResourceAttrSet("growthbook_sdk_connection.test", "proxy_signing_key"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				Config: `
@@ -226,6 +230,9 @@ resource "growthbook_sdk_connection" "test" {
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "name", "tf-acc-sdk-conn-updated"),
 					resource.TestCheckResourceAttr("growthbook_sdk_connection.test", "encrypt_payload", "true"),
 				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 			{
 				ResourceName:      "growthbook_sdk_connection.test",
