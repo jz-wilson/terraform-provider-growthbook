@@ -1,0 +1,1 @@
+terraform import growthbook_feature.checkout_redesign checkout-redesign
