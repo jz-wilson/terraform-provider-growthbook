@@ -17,6 +17,11 @@ updates:
     directory: "/tools"
     schedule:
       interval: "daily"
+    ignore:
+      # copywrite 0.25.x does not compile: its config package passes a
+      # koanf/v2 instance to a koanf v1 API. Revisit when a fixed release ships.
+      - dependency-name: "github.com/hashicorp/copywrite"
+        versions: [">= 0.25.0"]
   - package-ecosystem: "github-actions"
     directory: "/"
     groups:
