@@ -31,6 +31,11 @@ resource "growthbook_feature" "checkout_redesign" {
     }
   }
 
+  # prerequisites is a set of feature IDs, each of which must evaluate to
+  # true; it is unmanaged unless set here, and set to [] to explicitly
+  # clear it through Terraform.
+  prerequisites = [growthbook_feature.holiday_mode.id]
+
   # rules is unmanaged (left to the GrowthBook UI/other tooling) unless set
   # here; set it to [] to explicitly clear all rules through Terraform.
   rules = [
@@ -40,6 +45,12 @@ resource "growthbook_feature" "checkout_redesign" {
       condition        = jsonencode({ country = "US" })
       all_environments = true
       value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.holiday_mode.id
+          condition = jsonencode({ value = false })
+        },
+      ]
     },
     {
       type           = "rollout"
@@ -77,6 +88,7 @@ resource "growthbook_feature" "checkout_redesign" {
 - `description` (String)
 - `environments` (Attributes Map) (see [below for nested schema](#nestedatt--environments))
 - `owner` (String)
+- `prerequisites` (Set of String) Feature IDs; each must evaluate to `true`. Omit to leave unmanaged; set to `[]` to clear.
 - `project` (String)
 - `rules` (Attributes List) Ordered list of targeting rules. Omit this attribute to leave rules unmanaged; set it to `[]` to clear all rules. (see [below for nested schema](#nestedatt--rules))
 - `tags` (Set of String)
@@ -112,6 +124,7 @@ Optional:
 - `environments` (Set of String)
 - `experiment_id` (String)
 - `hash_attribute` (String)
+- `prerequisites` (Attributes List) Gates the rule on another feature's value. Omit to leave unmanaged; set to `[]` to clear. Requires GrowthBook Enterprise (the "prerequisite-targeting" commercial feature); on other plans GrowthBook silently drops it and the provider reports an error rather than let state drift. (see [below for nested schema](#nestedatt--rules--prerequisites))
 - `saved_groups` (Attributes List) (see [below for nested schema](#nestedatt--rules--saved_groups))
 - `value` (String)
 - `variations` (Attributes List) (see [below for nested schema](#nestedatt--rules--variations))
@@ -119,6 +132,15 @@ Optional:
 Read-Only:
 
 - `rule_id` (String) Server-assigned rule identifier.
+
+<a id="nestedatt--rules--prerequisites"></a>
+### Nested Schema for `rules.prerequisites`
+
+Required:
+
+- `condition` (String) JSON condition evaluated against the parent feature's value, e.g. `{"value": true}`. Whitespace/property-order differences are ignored.
+- `id` (String) The parent feature's key.
+
 
 <a id="nestedatt--rules--saved_groups"></a>
 ### Nested Schema for `rules.saved_groups`

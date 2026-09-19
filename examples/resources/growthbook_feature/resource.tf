@@ -16,6 +16,11 @@ resource "growthbook_feature" "checkout_redesign" {
     }
   }
 
+  # prerequisites is a set of feature IDs, each of which must evaluate to
+  # true; it is unmanaged unless set here, and set to [] to explicitly
+  # clear it through Terraform.
+  prerequisites = [growthbook_feature.holiday_mode.id]
+
   # rules is unmanaged (left to the GrowthBook UI/other tooling) unless set
   # here; set it to [] to explicitly clear all rules through Terraform.
   rules = [
@@ -25,6 +30,12 @@ resource "growthbook_feature" "checkout_redesign" {
       condition        = jsonencode({ country = "US" })
       all_environments = true
       value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.holiday_mode.id
+          condition = jsonencode({ value = false })
+        },
+      ]
     },
     {
       type           = "rollout"

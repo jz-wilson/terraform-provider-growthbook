@@ -26,6 +26,43 @@ func stringOneOf(values []string) validator.String {
 	return stringvalidator.OneOf(values...)
 }
 
+// featurePrerequisitesSchema is the feature-level `prerequisites` attribute:
+// a set of other features' IDs, each of which must evaluate to true. Unlike
+// rule-level prerequisites, there is no per-entry condition here.
+func featurePrerequisitesSchema() schema.SetAttribute {
+	return schema.SetAttribute{
+		Optional:            true,
+		ElementType:         elementTypeString,
+		MarkdownDescription: "Feature IDs; each must evaluate to `true`. Omit to leave unmanaged; set to `[]` to clear.",
+	}
+}
+
+// rulePrerequisiteSchema is the `prerequisites` list attribute on a rule:
+// each entry gates the rule on another feature's value via a JSON
+// condition.
+func rulePrerequisiteSchema() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Optional: true,
+		MarkdownDescription: "Gates the rule on another feature's value. Omit to leave unmanaged; set to `[]` to clear. " +
+			"Requires GrowthBook Enterprise (the \"prerequisite-targeting\" commercial feature); on other plans " +
+			"GrowthBook silently drops it and the provider reports an error rather than let state drift.",
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"id": schema.StringAttribute{
+					Required:            true,
+					MarkdownDescription: "The parent feature's key.",
+				},
+				"condition": schema.StringAttribute{
+					Required:            true,
+					MarkdownDescription: "JSON condition evaluated against the parent feature's value, e.g. `{\"value\": true}`. Whitespace/property-order differences are ignored.",
+					Validators:          []validator.String{jsonStringValidator{}},
+					PlanModifiers:       []planmodifier.String{jsonNormalizePlanModifier{}},
+				},
+			},
+		},
+	}
+}
+
 func featureRuleSchema() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
 		Optional:            true,
@@ -61,6 +98,7 @@ func featureRuleSchema() schema.ListNestedAttribute {
 						},
 					},
 				},
+				"prerequisites": rulePrerequisiteSchema(),
 				"all_environments": schema.BoolAttribute{
 					Optional: true,
 					Computed: true,
@@ -142,6 +180,7 @@ func (r *featureResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"environments":     featureEnvironmentSchema(),
 			"rules":            featureRuleSchema(),
+			"prerequisites":    featurePrerequisitesSchema(),
 			"revision_version": schema.Int64Attribute{Computed: true},
 			"date_created":     schema.StringAttribute{Computed: true},
 			"date_updated":     schema.StringAttribute{Computed: true},

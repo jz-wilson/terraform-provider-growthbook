@@ -5,9 +5,12 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
 )
@@ -52,9 +55,41 @@ func (r *featureResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// Set state from what GrowthBook actually stored before checking
+	// whether it silently dropped rule-level prerequisites: the feature
+	// now exists there either way, so appending an error after Set (rather
+	// than returning before it) lets the framework persist the state and
+	// taint the resource, instead of leaving an orphan Terraform never
+	// records and can't destroy.
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
+	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+}
+
+// requireRulePrerequisitesPersisted reports a clear error when GrowthBook
+// silently drops rule-level prerequisites instead of storing them, which
+// happens on any plan below Enterprise (the license gates rule-level
+// "prerequisite-targeting" separately from feature-level "prerequisites",
+// and a sub-Enterprise org's write succeeds but the value never lands).
+// Without this check, the Plugin Framework instead reports a confusing
+// "element 0 has vanished" consistency error.
+func requireRulePrerequisitesPersisted(plan featureModel, feature *growthbook.Feature) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for i, r := range plan.Rules {
+		if len(r.Prerequisites) == 0 {
+			continue
+		}
+		if i >= len(feature.Rules) || len(feature.Rules[i].Prerequisites) == 0 {
+			diags.AddError(
+				"GrowthBook did not store rule-level prerequisites",
+				fmt.Sprintf("GrowthBook did not store rules[%d].prerequisites. Rule-level prerequisite targeting "+
+					"requires an Enterprise plan (commercial feature \"prerequisite-targeting\").", i),
+			)
+		}
+	}
+	return diags
 }
 
 func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -76,14 +111,41 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	newState := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	// rules and environments are unmanaged when absent from a prior state
-	// that itself was never given them by config; preserve that instead of
-	// forcing the API's current values onto a resource that doesn't own
-	// them.
-	if state.Rules == nil && len(newState.Rules) == 0 {
-		newState.Rules = nil
+	// that itself was never given them by config; preserve that
+	// unconditionally instead of forcing the API's current values onto a
+	// resource that doesn't own them. This must not depend on whether the
+	// API's response happens to be empty: GrowthBook gives every feature a
+	// default per-environment entry (e.g. "production") even when nothing
+	// ever configured environments, so an API-emptiness check alone would
+	// leave a never-configured attribute reading back as non-null and
+	// drifting forever.
+	//
+	// Skip this on import: ImportStatePassthroughID populates only "id" in
+	// state, so every other field (including ValueType, checked here) is
+	// null too, which would otherwise look identical to "genuinely
+	// unmanaged" and drop the real rules/environments straight out of the
+	// imported state.
+	if !state.ValueType.IsNull() {
+		if state.Rules == nil {
+			newState.Rules = nil
+		}
+		if state.Environments == nil {
+			newState.Environments = nil
+		}
 	}
-	if state.Environments == nil && len(newState.Environments) == 0 {
-		newState.Environments = nil
+	if !state.Prerequisites.IsNull() && newState.Prerequisites.IsNull() {
+		// state.Prerequisites was declared (possibly []); the API omits an
+		// empty prerequisites array the same way it omits an absent one, so
+		// preserve "declared but empty" instead of flipping it to null.
+		newState.Prerequisites = emptyStringSet()
+	}
+	for i := range newState.Rules {
+		if i >= len(state.Rules) {
+			break
+		}
+		if state.Rules[i].Prerequisites != nil && newState.Rules[i].Prerequisites == nil {
+			newState.Rules[i].Prerequisites = []prerequisiteModel{}
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newState)...)
 }
@@ -106,9 +168,36 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// Same ordering as Create: set state from what GrowthBook actually has
+	// now before reporting the dropped-prerequisites error, so state
+	// reflects reality even when this update partially failed.
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
+	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+}
+
+// reconcilePrerequisites forces a declared-but-now-empty prerequisites list
+// (feature-level or on a rule) to encode as [] rather than null in the
+// returned state. GrowthBook's response omits an empty prerequisites array
+// the same way an absent one is omitted, so a plan that explicitly cleared
+// prerequisites (config sets [] rather than leaving the attribute unset)
+// would otherwise read back as null and produce "inconsistent result after
+// apply", since [] and null are distinct values for this Optional,
+// non-Computed attribute.
+func reconcilePrerequisites(state *featureModel, plan featureModel) {
+	if !plan.Prerequisites.IsNull() && !plan.Prerequisites.IsUnknown() && state.Prerequisites.IsNull() {
+		state.Prerequisites = emptyStringSet()
+	}
+	for i := range state.Rules {
+		if i >= len(plan.Rules) {
+			break
+		}
+		if plan.Rules[i].Prerequisites != nil && state.Rules[i].Prerequisites == nil {
+			state.Rules[i].Prerequisites = []prerequisiteModel{}
+		}
+	}
 }
 
 // echoUnmanagedCollections keeps rules/environments null in the returned
@@ -123,6 +212,9 @@ func echoUnmanagedCollections(state *featureModel, plan featureModel) {
 	}
 	if plan.Environments == nil {
 		state.Environments = nil
+	}
+	if plan.Prerequisites.IsNull() {
+		state.Prerequisites = types.SetNull(types.StringType)
 	}
 }
 

@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -152,6 +153,178 @@ resource "growthbook_feature" "test" {
   ]
 }
 `, key),
+			},
+		},
+	})
+}
+
+// TestAccFeatureResource_prerequisitesLive exercises feature-level
+// prerequisites (a set of feature IDs) against a real GrowthBook instance:
+// add, then remove, asserting the removal actually clears the server-side
+// value after a refresh rather than leaving it behind. Rule-level
+// prerequisites are not exercised here: GrowthBook's "prerequisite-
+// targeting" is an Enterprise-only commercial feature and the free/
+// unlicensed CI instance silently drops it rather than erroring - see
+// TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive, which
+// asserts that behavior instead.
+func TestAccFeatureResource_prerequisitesLive(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") == "" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	parentKey := acctest.RandomWithPrefix("tf-acc-")
+	childKey := acctest.RandomWithPrefix("tf-acc-")
+
+	parentConfig := fmt.Sprintf(`
+resource "growthbook_feature" "parent" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+}
+`, parentKey)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = [growthbook_feature.parent.id]
+}
+`, childKey),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
+					resource.TestCheckTypeSetElemAttr("growthbook_feature.child", "prerequisites.*", parentKey),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Remove it: assert it's actually gone after a refresh, not
+				// merely absent from this apply's plan.
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+}
+`, childKey),
+				Check: resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "0"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				ResourceName:      "growthbook_feature.child",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// environments/rules are never configured by this test, so
+				// they're unmanaged; import still reads GrowthBook's actual
+				// per-environment defaults (e.g. "production"), which
+				// ImportStateVerify would otherwise flag as a mismatch
+				// against the prior (unmanaged/null) state.
+				ImportStateVerifyIgnore: []string{"environments", "rules"},
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+}
+`, childKey),
+			},
+		},
+	})
+}
+
+// TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive proves the
+// free-plan behavior for rule-level prerequisites against a real
+// GrowthBook instance: the API accepts the create request but silently
+// drops rules[0].prerequisites (GrowthBook's "prerequisite-targeting" is
+// Enterprise-only), and the provider must turn that into a clear error
+// instead of surfacing the Plugin Framework's confusing "element 0 has
+// vanished" consistency failure. Create still calls resp.State.Set before
+// appending that error, so the child feature is tracked (tainted) rather
+// than orphaned: the second step's corrected config (no rule-level
+// prerequisites) applies as an Update, not "feature already exists", and
+// the test's own destroy at the end removes both features - the tf-acc-
+// sweeper is a backstop, not what this test relies on. See
+// TestAccFeatureResource_rulePrerequisitesEnterpriseErrorTracksState for
+// the fake-server equivalent, which additionally asserts via CheckDestroy
+// that the feature is gone server-side afterward.
+func TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") == "" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	parentKey := acctest.RandomWithPrefix("tf-acc-")
+	childKey := acctest.RandomWithPrefix("tf-acc-")
+
+	parentConfig := fmt.Sprintf(`
+resource "growthbook_feature" "parent" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+}
+`, parentKey)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = true })
+        },
+      ]
+    },
+  ]
+}
+`, childKey),
+				ExpectError: regexp.MustCompile(`Enterprise plan`),
+			},
+			{
+				// If Create hadn't tracked state, this would fail with
+				// "feature already exists" instead of applying as an
+				// Update.
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+    },
+  ]
+}
+`, childKey),
+				Check: resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.type", "force"),
 			},
 		},
 	})
