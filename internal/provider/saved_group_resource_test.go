@@ -212,6 +212,24 @@ resource "growthbook_saved_group" "test" {
 				},
 			},
 			{
+				// Omitting values entirely (unconfigured, distinct from an
+				// explicit empty set) must leave the server's list
+				// untouched, not clear it: Values is Optional+Computed, so
+				// an unconfigured plan is unknown and the update request
+				// omits the field rather than sending "[]".
+				Config: `
+resource "growthbook_saved_group" "test" {
+  name          = "tf-acc-saved-group-renamed"
+  type          = "list"
+  attribute_key = "userId"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_saved_group.test", "values.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_saved_group.test", "values.0", "user-3"),
+				),
+			},
+			{
 				// Clearing values to an explicit empty set must clear it on
 				// the server, not leave the prior list untouched.
 				Config: `
