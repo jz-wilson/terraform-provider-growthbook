@@ -1,0 +1,1 @@
+terraform import growthbook_saved_group.beta_users sg_abc123
