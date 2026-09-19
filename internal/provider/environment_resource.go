@@ -215,11 +215,26 @@ func environmentRequestFromModel(ctx context.Context, m EnvironmentResourceModel
 		apiReq.Parent = &v
 	}
 
+	// projects is Optional-only (not Computed): null means "no projects",
+	// not "leave unconfigured". On Create that's the same thing as omitting
+	// the field. On Update it is not: GrowthBook has no other signal for
+	// "clear the list", so a null plan must still send an explicit empty
+	// list, or removing the last configured project would never reach the
+	// API and the resource would drift forever (or fail apply with an
+	// inconsistent result once Read reports the old list back).
 	var diags diag.Diagnostics
-	if !m.Projects.IsNull() && !m.Projects.IsUnknown() {
-		var projects []string
-		diags.Append(m.Projects.ElementsAs(ctx, &projects, false)...)
-		apiReq.Projects = projects
+	isUpdate := !includeID
+	if !m.Projects.IsUnknown() {
+		if m.Projects.IsNull() {
+			if isUpdate {
+				empty := []string{}
+				apiReq.Projects = &empty
+			}
+		} else {
+			var projects []string
+			diags.Append(m.Projects.ElementsAs(ctx, &projects, false)...)
+			apiReq.Projects = &projects
+		}
 	}
 
 	return apiReq, diags
