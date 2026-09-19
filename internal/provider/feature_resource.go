@@ -54,15 +54,18 @@ func (r *featureResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Unable to create GrowthBook feature", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 
+	// Set state from what GrowthBook actually stored before checking
+	// whether it silently dropped rule-level prerequisites: the feature
+	// now exists there either way, so appending an error after Set (rather
+	// than returning before it) lets the framework persist the state and
+	// taint the resource, instead of leaving an orphan Terraform never
+	// records and can't destroy.
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
 	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
 }
 
 // requireRulePrerequisitesPersisted reports a clear error when GrowthBook
@@ -164,15 +167,15 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Unable to update GrowthBook feature", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 
+	// Same ordering as Create: set state from what GrowthBook actually has
+	// now before reporting the dropped-prerequisites error, so state
+	// reflects reality even when this update partially failed.
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
 	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
 }
 
 // reconcilePrerequisites forces a declared-but-now-empty prerequisites list

@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
 )
@@ -27,6 +29,11 @@ type fakeFeatureServer struct {
 	// archiveRequiredOnce, when set, makes the next DELETE for that id
 	// return 403 "archive the feature first" exactly once.
 	archiveRequiredOnce map[string]bool
+	// denyRulePrerequisites, when set, silently strips rule-level
+	// prerequisites from every write instead of storing them, mirroring
+	// GrowthBook's real behavior on a sub-Enterprise plan (see
+	// requireRulePrerequisitesPersisted).
+	denyRulePrerequisites bool
 }
 
 func newFakeFeatureServer() (*httptest.Server, *fakeFeatureServer) {
@@ -76,12 +83,12 @@ func (f *fakeFeatureServer) handleCollection(w http.ResponseWriter, r *http.Requ
 		DateUpdated:  "2026-01-01T00:00:00Z",
 		Revision:     &growthbook.FeatureRevision{Version: 1},
 	}
-	applyFeatureRequest(feature, req)
+	f.applyFeatureRequest(feature, req)
 	f.features[feature.ID] = feature
 	featureWriteJSON(w, http.StatusOK, map[string]any{"feature": feature})
 }
 
-func applyFeatureRequest(feature *growthbook.Feature, req growthbook.FeatureRequest) {
+func (f *fakeFeatureServer) applyFeatureRequest(feature *growthbook.Feature, req growthbook.FeatureRequest) {
 	if req.Description != nil {
 		feature.Description = *req.Description
 	}
@@ -109,6 +116,9 @@ func applyFeatureRequest(feature *growthbook.Feature, req growthbook.FeatureRequ
 		for i := range rules {
 			if rules[i].ID == "" {
 				rules[i].ID = fmt.Sprintf("rule_%d", i)
+			}
+			if f.denyRulePrerequisites {
+				rules[i].Prerequisites = nil
 			}
 		}
 		feature.Rules = rules
@@ -145,7 +155,7 @@ func (f *fakeFeatureServer) handleItem(w http.ResponseWriter, r *http.Request) {
 		if req.DefaultValue != "" {
 			feature.DefaultValue = req.DefaultValue
 		}
-		applyFeatureRequest(feature, req)
+		f.applyFeatureRequest(feature, req)
 		feature.Revision.Version++
 		feature.DateUpdated = "2026-01-02T00:00:00Z"
 		featureWriteJSON(w, http.StatusOK, map[string]any{"feature": feature})
@@ -511,6 +521,86 @@ var defaultEnvFeature = growthbook.Feature{
 	DefaultValue: "false",
 	Environments: map[string]growthbook.FeatureEnvironment{"production": {Enabled: false}},
 	Revision:     &growthbook.FeatureRevision{Version: 1},
+}
+
+// TestAccFeatureResource_rulePrerequisitesEnterpriseErrorTracksState proves
+// that requireRulePrerequisitesPersisted's error doesn't orphan the
+// feature: Create still calls resp.State.Set before appending the error,
+// so the resource is tracked (tainted) rather than left in GrowthBook with
+// no Terraform record of it. A follow-up apply that removes the rule-level
+// prerequisites succeeds as an Update (not "feature already exists"), and
+// CheckDestroy confirms the fake server no longer has the feature once the
+// test's automatic destroy runs.
+func TestAccFeatureResource_rulePrerequisitesEnterpriseErrorTracksState(t *testing.T) {
+	server, fake := newFakeFeatureServer()
+	defer server.Close()
+
+	fake.mu.Lock()
+	fake.denyRulePrerequisites = true
+	fake.mu.Unlock()
+
+	t.Setenv("TF_ACC", "1")
+	t.Setenv("GROWTHBOOK_API_KEY", "secret_test")
+	t.Setenv("GROWTHBOOK_API_URL", server.URL)
+
+	const deniedID = "ft_prereq_denied"
+	ruleWithPrereq := `
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        { id = "some_parent", condition = jsonencode({ value = true }) },
+      ]
+    },
+  ]
+`
+	ruleWithoutPrereq := `
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+    },
+  ]
+`
+	featureConfig := func(rules string) string {
+		return fakeAPIProviderConfig() + fmt.Sprintf(`
+resource "growthbook_feature" "denied" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  %s
+}
+`, deniedID, rules)
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			if _, ok := fake.features[deniedID]; ok {
+				return fmt.Errorf("feature %q still exists on the fake server after destroy", deniedID)
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config:      featureConfig(ruleWithPrereq),
+				ExpectError: regexp.MustCompile(`Enterprise plan`),
+			},
+			{
+				// If Create hadn't tracked state, this would fail with
+				// "feature already exists" instead of applying as an
+				// Update.
+				Config: featureConfig(ruleWithoutPrereq),
+				Check:  resource.TestCheckResourceAttr("growthbook_feature.denied", "rules.0.type", "force"),
+			},
+		},
+	})
 }
 
 func fakeAPIProviderConfig() string {

@@ -8,6 +8,10 @@ FEATURES:
 * **New Data Source:** `growthbook_attribute`
 * **`growthbook_feature`:** Add feature-level `prerequisites` (a set of feature IDs) and rule-level `prerequisites` (`id`, `condition`), gating a feature or a rule on another feature's value. Rule-level prerequisites require GrowthBook Enterprise.
 
+BUG FIXES:
+
+* **`growthbook_feature`:** Fix `rules`/`environments` reading back as non-null and drifting forever when neither was ever set in config. GrowthBook gives every feature a default per-environment entry (e.g. `production`) even when a feature never configures `environments`, so a plan check that only cleared these attributes when the API's response was empty missed that case and reported spurious changes on every subsequent plan.
+
 ## 0.1.0 (September 18, 2026)
 
 FEATURES:
