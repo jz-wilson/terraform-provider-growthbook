@@ -13,6 +13,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 // fakeSDKConnectionServer is a minimal in-memory stand-in for the GrowthBook
@@ -22,6 +23,8 @@ type fakeSDKConnectionServer struct {
 	mu     sync.Mutex
 	nextID int
 	byID   map[string]map[string]any
+	// puts records every update request body, in order.
+	puts []map[string]any
 }
 
 func newFakeSDKConnectionServer() *fakeSDKConnectionServer {
@@ -87,6 +90,7 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		f.puts = append(f.puts, req)
 		merged := sdkConnectionFromRequest(id, req)
 		// Preserve generated secrets across update, mirroring the real API.
 		merged["key"] = existing["key"]
@@ -238,6 +242,65 @@ resource "growthbook_sdk_connection" "test" {
 				ResourceName:      "growthbook_sdk_connection.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// TestAccSDKConnectionResource_updateOmitsUnconfiguredOptions checks that an
+// update sends only the options the configuration sets. Resending an
+// unconfigured option as false would overwrite a value changed in the
+// GrowthBook UI.
+func TestAccSDKConnectionResource_updateOmitsUnconfiguredOptions(t *testing.T) {
+	fake := newFakeSDKConnectionServer()
+	srv := fake.httptestServer()
+	defer srv.Close()
+
+	t.Setenv("TF_ACC", "1")
+	t.Setenv("GROWTHBOOK_API_KEY", "secret_test")
+	t.Setenv("GROWTHBOOK_API_URL", srv.URL)
+
+	config := func(name string) string {
+		return fmt.Sprintf(`
+resource "growthbook_sdk_connection" "test" {
+  name             = %q
+  language         = "javascript"
+  environment      = "production"
+  include_rule_ids = true
+}
+`, name)
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: config("tf-acc-sdk-conn")},
+			{
+				Config: config("tf-acc-sdk-conn-renamed"),
+				Check: func(_ *terraform.State) error {
+					fake.mu.Lock()
+					defer fake.mu.Unlock()
+					if len(fake.puts) != 1 {
+						return fmt.Errorf("got %d update requests, want 1", len(fake.puts))
+					}
+					put := fake.puts[0]
+					if put["includeRuleIds"] != true {
+						return fmt.Errorf("includeRuleIds = %v, want true", put["includeRuleIds"])
+					}
+					for _, k := range []string{
+						"encryptPayload", "includeVisualExperiments", "includeDraftExperiments",
+						"includeExperimentNames", "includeRedirectExperiments", "hashSecureAttributes",
+						"remoteEvalEnabled", "proxyEnabled",
+					} {
+						if v, ok := put[k]; ok {
+							return fmt.Errorf("update sent unconfigured option %s = %v", k, v)
+						}
+					}
+					return nil
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 		},
 	})
