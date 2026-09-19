@@ -5,6 +5,7 @@ package provider
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,7 +37,9 @@ type fakeEnvironmentRequest struct {
 // delete) for the provider's acceptance and data source tests. It is
 // pre-seeded with a "production" environment, matching every real
 // GrowthBook organization, so data source tests have something to find.
-func newFakeEnvironmentServer() *httptest.Server {
+// onPUT, if non-nil, is called with the raw body of every PUT request,
+// letting a test assert exactly what an update sent.
+func newFakeEnvironmentServer(onPUT func(body []byte)) *httptest.Server {
 	mu := sync.Mutex{}
 	envs := map[string]*fakeEnvironment{
 		"production": {ID: "production", Description: "Production", ToggleOnList: true, DefaultState: false},
@@ -85,12 +88,20 @@ func newFakeEnvironmentServer() *httptest.Server {
 
 		switch r.Method {
 		case http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": err.Error()})
+				return
+			}
+			if onPUT != nil {
+				onPUT(body)
+			}
 			if !ok {
 				writeJSON(w, http.StatusNotFound, map[string]any{"message": "could not find environment " + id})
 				return
 			}
 			var req fakeEnvironmentRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err := json.Unmarshal(body, &req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"message": err.Error()})
 				return
 			}

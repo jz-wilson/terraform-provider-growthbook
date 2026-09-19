@@ -14,7 +14,7 @@ import (
 func TestAccEnvironmentDataSource(t *testing.T) {
 	t.Setenv("TF_ACC", "1")
 
-	server := newFakeEnvironmentServer()
+	server := newFakeEnvironmentServer(nil)
 	t.Cleanup(server.Close)
 	t.Setenv("GROWTHBOOK_API_URL", server.URL)
 	t.Setenv("GROWTHBOOK_API_KEY", "test-key")
@@ -43,7 +43,7 @@ data "growthbook_environment" "prod" {
 func TestAccEnvironmentsDataSource(t *testing.T) {
 	t.Setenv("TF_ACC", "1")
 
-	server := newFakeEnvironmentServer()
+	server := newFakeEnvironmentServer(nil)
 	t.Cleanup(server.Close)
 	t.Setenv("GROWTHBOOK_API_URL", server.URL)
 	t.Setenv("GROWTHBOOK_API_KEY", "test-key")

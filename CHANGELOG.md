@@ -7,6 +7,10 @@ FEATURES:
 * **New Resource:** `growthbook_attribute`
 * **New Data Source:** `growthbook_attribute`
 
+BUG FIXES:
+
+* `growthbook_environment`: removing `projects` from config now clears it on GrowthBook instead of leaving the prior list in place and failing apply with "provider produced inconsistent result after apply".
+
 ## 0.1.0 (September 18, 2026)
 
 FEATURES:

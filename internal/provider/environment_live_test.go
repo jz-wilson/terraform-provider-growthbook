@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -82,6 +83,8 @@ data "growthbook_environment" "production" {
 func TestAccEnvironmentResource_live_production(t *testing.T) {
 	testAccLivePreCheck(t)
 
+	projectID, _, _ := findExistingProject(t)
+
 	const importCfg = `
 resource "growthbook_environment" "production" {
   id = "production"
@@ -142,6 +145,35 @@ removed {
 				// with on a fresh GrowthBook instance.
 				Config: revertCfg,
 				Check:  resource.TestCheckResourceAttr("growthbook_environment.production", "description", "Production"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Set projects, using the organization's one real project
+				// id (findExistingProject, shared with
+				// TestAccProjectResource_live), then clear it in the next
+				// step - proving the real API's clear semantics for the
+				// fix in this PR. "production" starts with no projects
+				// restriction, so this round-trips back to that.
+				Config: fmt.Sprintf(`
+resource "growthbook_environment" "production" {
+  id       = "production"
+  projects = [%q]
+}
+`, projectID),
+				Check: resource.TestCheckResourceAttr("growthbook_environment.production", "projects.#", "1"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				Config: `
+resource "growthbook_environment" "production" {
+  id = "production"
+}
+`,
+				Check: resource.TestCheckNoResourceAttr("growthbook_environment.production", "projects"),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
 				},
