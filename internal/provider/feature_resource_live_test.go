@@ -157,10 +157,11 @@ resource "growthbook_feature" "test" {
 	})
 }
 
-// TestAccFeatureResource_prerequisitesLive exercises feature-level and
-// rule-level prerequisites against a real GrowthBook instance: add, change
-// a condition, then remove them, asserting the removal actually clears the
-// server-side value after a refresh rather than leaving it behind.
+// TestAccFeatureResource_prerequisitesLive exercises feature-level (a set
+// of feature IDs) and rule-level ({id, condition}) prerequisites against a
+// real GrowthBook instance: add, change the rule-level condition, then
+// remove both, asserting the removal actually clears the server-side
+// value after a refresh rather than leaving it behind.
 func TestAccFeatureResource_prerequisitesLive(t *testing.T) {
 	if os.Getenv("GROWTHBOOK_LIVE") == "" {
 		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
@@ -188,12 +189,7 @@ resource "growthbook_feature" "child" {
   value_type    = "boolean"
   default_value = "false"
 
-  prerequisites = [
-    {
-      id        = growthbook_feature.parent.id
-      condition = jsonencode({ value = true })
-    },
-  ]
+  prerequisites = [growthbook_feature.parent.id]
 
   rules = [
     {
@@ -212,28 +208,23 @@ resource "growthbook_feature" "child" {
 `, childKey),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.id", parentKey),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":true}`),
+					resource.TestCheckTypeSetElemAttr("growthbook_feature.child", "prerequisites.*", parentKey),
 					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":true}`),
 				),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
 				},
 			},
 			{
-				// Change the condition.
+				// Change the rule-level condition.
 				Config: parentConfig + fmt.Sprintf(`
 resource "growthbook_feature" "child" {
   id            = %q
   value_type    = "boolean"
   default_value = "false"
 
-  prerequisites = [
-    {
-      id        = growthbook_feature.parent.id
-      condition = jsonencode({ value = false })
-    },
-  ]
+  prerequisites = [growthbook_feature.parent.id]
 
   rules = [
     {
@@ -251,7 +242,6 @@ resource "growthbook_feature" "child" {
 }
 `, childKey),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":false}`),
 					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":false}`),
 				),
 				ConfigPlanChecks: resource.ConfigPlanChecks{

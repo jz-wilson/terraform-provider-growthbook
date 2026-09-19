@@ -27,9 +27,10 @@ type variationModel struct {
 	Value       types.String `tfsdk:"value"`
 }
 
-// prerequisiteModel is one entry of a feature's or a rule's prerequisites
-// list: it gates evaluation on another feature (ID) matching a condition
-// evaluated against that parent feature's value.
+// prerequisiteModel is one entry of a rule's prerequisites list: it gates
+// the rule on another feature (ID) matching a condition evaluated against
+// that parent feature's value. Feature-level prerequisites have no
+// condition (see featureModel.Prerequisites) - only rule-level ones do.
 type prerequisiteModel struct {
 	ID        types.String `tfsdk:"id"`
 	Condition types.String `tfsdk:"condition"`
@@ -61,20 +62,24 @@ type environmentModel struct {
 // featureModel is the shared Terraform data model for the growthbook_feature
 // resource and data source.
 type featureModel struct {
-	ID              types.String                `tfsdk:"id"`
-	ValueType       types.String                `tfsdk:"value_type"`
-	DefaultValue    types.String                `tfsdk:"default_value"`
-	Description     types.String                `tfsdk:"description"`
-	Project         types.String                `tfsdk:"project"`
-	Owner           types.String                `tfsdk:"owner"`
-	Tags            types.Set                   `tfsdk:"tags"`
-	Archived        types.Bool                  `tfsdk:"archived"`
-	Environments    map[string]environmentModel `tfsdk:"environments"`
-	Rules           []ruleModel                 `tfsdk:"rules"`
-	Prerequisites   []prerequisiteModel         `tfsdk:"prerequisites"`
-	RevisionVersion types.Int64                 `tfsdk:"revision_version"`
-	DateCreated     types.String                `tfsdk:"date_created"`
-	DateUpdated     types.String                `tfsdk:"date_updated"`
+	ID           types.String                `tfsdk:"id"`
+	ValueType    types.String                `tfsdk:"value_type"`
+	DefaultValue types.String                `tfsdk:"default_value"`
+	Description  types.String                `tfsdk:"description"`
+	Project      types.String                `tfsdk:"project"`
+	Owner        types.String                `tfsdk:"owner"`
+	Tags         types.Set                   `tfsdk:"tags"`
+	Archived     types.Bool                  `tfsdk:"archived"`
+	Environments map[string]environmentModel `tfsdk:"environments"`
+	Rules        []ruleModel                 `tfsdk:"rules"`
+	// Prerequisites is feature-level: a set of other features' IDs, each
+	// of which must evaluate to true. Unlike rules[].prerequisites, there
+	// is no per-entry condition here (see growthbook-go's Feature.
+	// Prerequisites / the GrowthBook OpenAPI spec).
+	Prerequisites   types.Set    `tfsdk:"prerequisites"`
+	RevisionVersion types.Int64  `tfsdk:"revision_version"`
+	DateCreated     types.String `tfsdk:"date_created"`
+	DateUpdated     types.String `tfsdk:"date_updated"`
 }
 
 // stringSetValue builds a types.Set of strings, returning a null set for a
@@ -91,6 +96,12 @@ func stringSetValue(ctx context.Context, values []string, diags *diag.Diagnostic
 	set, d := types.SetValueFrom(ctx, types.StringType, values)
 	diags.Append(d...)
 	return set
+}
+
+// emptyStringSet returns a known, empty types.Set of strings, distinct from
+// types.SetNull(types.StringType).
+func emptyStringSet() types.Set {
+	return types.SetValueMust(types.StringType, nil)
 }
 
 func stringSetToSlice(ctx context.Context, set types.Set, diags *diag.Diagnostics) []string {
@@ -122,7 +133,13 @@ func prerequisitesToAPI(prereqs []prerequisiteModel) []growthbook.FeaturePrerequ
 }
 
 func prerequisitesFromAPI(prereqs []growthbook.FeaturePrerequisite) []prerequisiteModel {
-	if prereqs == nil {
+	// Treat an empty response array the same as an absent one: GrowthBook's
+	// live API always sends "prerequisites" (as [] when a rule/feature has
+	// none), unlike this package's own fake test server, which omits the
+	// field entirely when empty. Normalizing both to nil here keeps an
+	// unconfigured attribute reading back as null instead of drifting to a
+	// server-asserted [].
+	if len(prereqs) == 0 {
 		return nil
 	}
 	out := make([]prerequisiteModel, 0, len(prereqs))
@@ -136,16 +153,17 @@ func prerequisitesFromAPI(prereqs []growthbook.FeaturePrerequisite) []prerequisi
 }
 
 // featurePrerequisitesToAPI converts the plan's feature-level prerequisites
-// list into the API's clear-vs-leave pointer form, the same convention as
-// rulesToAPI: nil means the plan omitted prerequisites entirely (leave
-// unmanaged), a non-nil pointer to an empty slice clears them.
-func featurePrerequisitesToAPI(prereqs []prerequisiteModel) *[]growthbook.FeaturePrerequisite {
-	if prereqs == nil {
+// set (feature IDs only, no condition) into the API's clear-vs-leave
+// pointer form, the same convention as rulesToAPI: a null/unknown set
+// means the plan omitted prerequisites entirely (leave unmanaged), a
+// known set - even an empty one - clears/replaces them.
+func featurePrerequisitesToAPI(ctx context.Context, set types.Set, diags *diag.Diagnostics) *[]string {
+	if set.IsNull() || set.IsUnknown() {
 		return nil
 	}
-	out := prerequisitesToAPI(prereqs)
+	out := stringSetToSlice(ctx, set, diags)
 	if out == nil {
-		out = []growthbook.FeaturePrerequisite{}
+		out = []string{}
 	}
 	return &out
 }
@@ -302,7 +320,7 @@ func featureModelFromAPI(ctx context.Context, f *growthbook.Feature, diags *diag
 		Tags:            stringSetValue(ctx, f.Tags, diags),
 		Environments:    environmentsFromAPI(f.Environments),
 		Rules:           rulesFromAPI(ctx, f.Rules, diags),
-		Prerequisites:   prerequisitesFromAPI(f.Prerequisites),
+		Prerequisites:   stringSetValue(ctx, f.Prerequisites, diags),
 		DateCreated:     types.StringValue(f.DateCreated),
 		DateUpdated:     types.StringValue(f.DateUpdated),
 		RevisionVersion: types.Int64Null(),
@@ -322,7 +340,7 @@ func featureCreateRequest(ctx context.Context, m featureModel, diags *diag.Diagn
 		Tags:          stringSetToSlice(ctx, m.Tags, diags),
 		Environments:  environmentsToAPI(m.Environments),
 		Rules:         rulesToAPI(ctx, m.Rules, diags),
-		Prerequisites: featurePrerequisitesToAPI(m.Prerequisites),
+		Prerequisites: featurePrerequisitesToAPI(ctx, m.Prerequisites, diags),
 	}
 	if !m.Description.IsNull() && !m.Description.IsUnknown() {
 		v := m.Description.ValueString()

@@ -307,10 +307,11 @@ resource "growthbook_feature" "test" {
 }
 
 // TestAccFeatureResource_prerequisites drives a fake GrowthBook server
-// through adding feature-level and rule-level prerequisites, changing a
-// condition, and then removing them, asserting each step converges to an
-// empty plan and that removal actually clears the server-side value rather
-// than leaving it behind.
+// through adding feature-level (a set of feature IDs) and rule-level
+// ({id, condition}) prerequisites, changing the rule-level condition, and
+// then removing both, asserting each step converges to an empty plan and
+// that removal actually clears the server-side value rather than leaving
+// it behind.
 func TestAccFeatureResource_prerequisites(t *testing.T) {
 	server, _ := newFakeFeatureServer()
 	defer server.Close()
@@ -337,12 +338,7 @@ resource "growthbook_feature" "child" {
   value_type    = "boolean"
   default_value = "false"
 
-  prerequisites = [
-    {
-      id        = growthbook_feature.parent.id
-      condition = jsonencode({ value = true })
-    },
-  ]
+  prerequisites = [growthbook_feature.parent.id]
 
   rules = [
     {
@@ -361,28 +357,23 @@ resource "growthbook_feature" "child" {
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.id", "ft_prereq_parent"),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":true}`),
+					resource.TestCheckTypeSetElemAttr("growthbook_feature.child", "prerequisites.*", "ft_prereq_parent"),
 					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":true}`),
 				),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
 				},
 			},
 			{
-				// Change the condition.
+				// Change the rule-level condition.
 				Config: fakeAPIProviderConfig() + parent + `
 resource "growthbook_feature" "child" {
   id            = "ft_prereq_child"
   value_type    = "boolean"
   default_value = "false"
 
-  prerequisites = [
-    {
-      id        = growthbook_feature.parent.id
-      condition = jsonencode({ value = false })
-    },
-  ]
+  prerequisites = [growthbook_feature.parent.id]
 
   rules = [
     {
@@ -400,7 +391,6 @@ resource "growthbook_feature" "child" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":false}`),
 					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":false}`),
 				),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -408,8 +398,8 @@ resource "growthbook_feature" "child" {
 				},
 			},
 			{
-				// Remove all prerequisites: the empty lists must clear the
-				// server-side values, not leave them behind.
+				// Remove both: the empty lists must clear the server-side
+				// values, not leave them behind.
 				Config: fakeAPIProviderConfig() + parent + `
 resource "growthbook_feature" "child" {
   id            = "ft_prereq_child"

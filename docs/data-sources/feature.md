@@ -38,7 +38,7 @@ output "checkout_redesign_default_value" {
 - `description` (String)
 - `environments` (Attributes Map) (see [below for nested schema](#nestedatt--environments))
 - `owner` (String)
-- `prerequisites` (Attributes List) (see [below for nested schema](#nestedatt--prerequisites))
+- `prerequisites` (Set of String)
 - `project` (String)
 - `revision_version` (Number)
 - `rules` (Attributes List) (see [below for nested schema](#nestedatt--rules))
@@ -51,15 +51,6 @@ output "checkout_redesign_default_value" {
 Read-Only:
 
 - `enabled` (Boolean)
-
-
-<a id="nestedatt--prerequisites"></a>
-### Nested Schema for `prerequisites`
-
-Read-Only:
-
-- `condition` (String)
-- `id` (String)
 
 
 <a id="nestedatt--rules"></a>

@@ -31,14 +31,10 @@ resource "growthbook_feature" "checkout_redesign" {
     }
   }
 
-  # prerequisites is unmanaged unless set here; set it to [] to explicitly
-  # clear all prerequisites through Terraform.
-  prerequisites = [
-    {
-      id        = growthbook_feature.holiday_mode.id
-      condition = jsonencode({ value = false })
-    },
-  ]
+  # prerequisites is a set of feature IDs, each of which must evaluate to
+  # true; it is unmanaged unless set here, and set to [] to explicitly
+  # clear it through Terraform.
+  prerequisites = [growthbook_feature.holiday_mode.id]
 
   # rules is unmanaged (left to the GrowthBook UI/other tooling) unless set
   # here; set it to [] to explicitly clear all rules through Terraform.
@@ -92,7 +88,7 @@ resource "growthbook_feature" "checkout_redesign" {
 - `description` (String)
 - `environments` (Attributes Map) (see [below for nested schema](#nestedatt--environments))
 - `owner` (String)
-- `prerequisites` (Attributes List) Gates evaluation on another feature's value. Omit to leave unmanaged; set to `[]` to clear. (see [below for nested schema](#nestedatt--prerequisites))
+- `prerequisites` (Set of String) Feature IDs; each must evaluate to `true`. Omit to leave unmanaged; set to `[]` to clear.
 - `project` (String)
 - `rules` (Attributes List) Ordered list of targeting rules. Omit this attribute to leave rules unmanaged; set it to `[]` to clear all rules. (see [below for nested schema](#nestedatt--rules))
 - `tags` (Set of String)
@@ -109,15 +105,6 @@ resource "growthbook_feature" "checkout_redesign" {
 Required:
 
 - `enabled` (Boolean)
-
-
-<a id="nestedatt--prerequisites"></a>
-### Nested Schema for `prerequisites`
-
-Required:
-
-- `condition` (String) JSON condition evaluated against the parent feature's value, e.g. `{"value": true}`. Whitespace/property-order differences are ignored.
-- `id` (String) The parent feature's key.
 
 
 <a id="nestedatt--rules"></a>

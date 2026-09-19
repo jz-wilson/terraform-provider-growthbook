@@ -46,7 +46,7 @@ Sources: the GrowthBook OpenAPI spec (`/v1/projects`, `/v1/environments`, `/v1/s
 | `archived` | `archived` | yes | Defaults to `false` in the schema, matching GrowthBook's default. |
 | `environments` (request: `{enabled}` map; response: `FeatureEnvironmentV2`, richer per-env object) | `environments` (map of `{enabled}`) | yes | Only `enabled` is modeled per environment; the response's richer per-environment object (compiled SDK payload/definition) is not surfaced - see Not yet modelled. |
 | `rules` | `rules` | yes | See rule-level table below; only a subset of rule types and rule fields are modeled. |
-| `prerequisites` (feature-level, `{id, condition}`) | `prerequisites` (`id`, `condition`) | yes | Gates the feature on another feature's value. `condition` is a JSON string normalized the same way as `rules[].condition`. |
+| `prerequisites` (feature-level, array of feature-id strings) | `prerequisites` (set of strings) | yes | Each entry is another feature's id, which must evaluate to `true`. No per-entry condition at this level - see rule-level prerequisites below for that. |
 | `dateCreated` | `date_created` | computed-only | Response-only. |
 | `dateUpdated` | `date_updated` | computed-only | Response-only. |
 | `revision` (full `FeatureRevisionSummary`/`FeatureRevisionV2` object: id, featureId, baseVersion, version, comment, date, status, createdBy, publishedBy, reviews, scheduled-publish fields, rampActions, metadata, etc.) | `revision_version` | computed-only | Only `revision.version` is surfaced, as an integer; every other revision/draft field is unmodeled. See Not yet modelled. |

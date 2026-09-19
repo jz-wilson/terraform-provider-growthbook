@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
 )
@@ -86,13 +87,11 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if state.Environments == nil && len(newState.Environments) == 0 {
 		newState.Environments = nil
 	}
-	if state.Prerequisites == nil && len(newState.Prerequisites) == 0 {
-		newState.Prerequisites = nil
-	} else if state.Prerequisites != nil && newState.Prerequisites == nil {
+	if !state.Prerequisites.IsNull() && newState.Prerequisites.IsNull() {
 		// state.Prerequisites was declared (possibly []); the API omits an
 		// empty prerequisites array the same way it omits an absent one, so
 		// preserve "declared but empty" instead of flipping it to null.
-		newState.Prerequisites = []prerequisiteModel{}
+		newState.Prerequisites = emptyStringSet()
 	}
 	for i := range newState.Rules {
 		if i >= len(state.Rules) {
@@ -138,8 +137,8 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 // apply", since [] and null are distinct values for this Optional,
 // non-Computed attribute.
 func reconcilePrerequisites(state *featureModel, plan featureModel) {
-	if plan.Prerequisites != nil && state.Prerequisites == nil {
-		state.Prerequisites = []prerequisiteModel{}
+	if !plan.Prerequisites.IsNull() && !plan.Prerequisites.IsUnknown() && state.Prerequisites.IsNull() {
+		state.Prerequisites = emptyStringSet()
 	}
 	for i := range state.Rules {
 		if i >= len(plan.Rules) {
@@ -164,8 +163,8 @@ func echoUnmanagedCollections(state *featureModel, plan featureModel) {
 	if plan.Environments == nil {
 		state.Environments = nil
 	}
-	if plan.Prerequisites == nil {
-		state.Prerequisites = nil
+	if plan.Prerequisites.IsNull() {
+		state.Prerequisites = types.SetNull(types.StringType)
 	}
 }
 

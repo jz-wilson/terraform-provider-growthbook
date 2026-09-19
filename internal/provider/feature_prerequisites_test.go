@@ -19,39 +19,56 @@ const (
 )
 
 func TestFeaturePrerequisitesToAPI_NilVsEmpty(t *testing.T) {
-	// A nil model list leaves prerequisites unmanaged: no pointer at all.
-	if got := featurePrerequisitesToAPI(nil); got != nil {
-		t.Errorf("featurePrerequisitesToAPI(nil) = %#v, want nil", got)
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	// A null/unknown set leaves prerequisites unmanaged: no pointer at all.
+	if got := featurePrerequisitesToAPI(ctx, types.SetNull(types.StringType), &diags); got != nil {
+		t.Errorf("featurePrerequisitesToAPI(null) = %#v, want nil", got)
 	}
 
-	// A non-nil, empty model list clears prerequisites: a pointer to [].
-	got := featurePrerequisitesToAPI([]prerequisiteModel{})
+	// A known, empty set clears prerequisites: a pointer to [].
+	got := featurePrerequisitesToAPI(ctx, emptyStringSet(), &diags)
 	if got == nil {
 		t.Fatal("featurePrerequisitesToAPI([]) = nil, want non-nil pointer to empty slice")
 	}
 	if len(*got) != 0 {
 		t.Errorf("featurePrerequisitesToAPI([]) = %#v, want empty slice", *got)
 	}
+	if diags.HasError() {
+		t.Fatalf("diags = %v", diags)
+	}
 }
 
 func TestFeaturePrerequisitesToAPI_Populated(t *testing.T) {
-	got := featurePrerequisitesToAPI([]prerequisiteModel{
-		{ID: types.StringValue(prereqTestParentID), Condition: types.StringValue(prereqTestCond)},
-	})
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	set, d := types.SetValueFrom(ctx, types.StringType, []string{prereqTestParentID})
+	diags.Append(d...)
+	if diags.HasError() {
+		t.Fatalf("SetValueFrom() diags = %v", diags)
+	}
+
+	got := featurePrerequisitesToAPI(ctx, set, &diags)
 	if got == nil || len(*got) != 1 {
 		t.Fatalf("featurePrerequisitesToAPI() = %#v, want 1 entry", got)
 	}
-	if (*got)[0].ID != prereqTestParentID || (*got)[0].Condition != prereqTestCond {
+	if (*got)[0] != prereqTestParentID {
 		t.Errorf("featurePrerequisitesToAPI()[0] = %#v", (*got)[0])
 	}
 }
 
 func TestPrerequisitesFromAPI_NilVsEmpty(t *testing.T) {
+	// Both a nil and a literal empty API response normalize to nil: the
+	// live API always sends "prerequisites" (as [] when empty), unlike the
+	// fake test server, which omits it, so decoding must not distinguish
+	// between them at this layer.
 	if got := prerequisitesFromAPI(nil); got != nil {
 		t.Errorf("prerequisitesFromAPI(nil) = %#v, want nil", got)
 	}
-	if got := prerequisitesFromAPI([]growthbook.FeaturePrerequisite{}); len(got) != 0 || got == nil {
-		t.Errorf("prerequisitesFromAPI([]) = %#v, want non-nil empty slice", got)
+	if got := prerequisitesFromAPI([]growthbook.FeaturePrerequisite{}); got != nil {
+		t.Errorf("prerequisitesFromAPI([]) = %#v, want nil", got)
 	}
 }
 

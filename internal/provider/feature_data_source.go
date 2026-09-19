@@ -107,14 +107,9 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 					},
 				},
 			},
-			"prerequisites": schema.ListNestedAttribute{
-				Computed: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"id":        schema.StringAttribute{Computed: true},
-						"condition": schema.StringAttribute{Computed: true},
-					},
-				},
+			"prerequisites": schema.SetAttribute{
+				Computed:    true,
+				ElementType: elementTypeString,
 			},
 			"revision_version": schema.Int64Attribute{Computed: true},
 			"date_created":     schema.StringAttribute{Computed: true},
