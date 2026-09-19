@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 
@@ -103,7 +104,17 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 								},
 							},
 						},
-						"rule_id": schema.StringAttribute{Computed: true},
+						"rule_id":       schema.StringAttribute{Computed: true},
+						"schedule_type": schema.StringAttribute{Computed: true},
+						"schedule_rules": schema.ListNestedAttribute{
+							Computed: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"enabled":   schema.BoolAttribute{Computed: true},
+									"timestamp": schema.StringAttribute{CustomType: timetypes.RFC3339Type{}, Computed: true},
+								},
+							},
+						},
 					},
 				},
 			},

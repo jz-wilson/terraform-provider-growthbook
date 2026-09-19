@@ -329,3 +329,73 @@ resource "growthbook_feature" "child" {
 		},
 	})
 }
+
+// TestAccFeatureResource_scheduleRulesRequiresProLive proves the free-plan
+// behavior for rule scheduling against a real GrowthBook instance: the API
+// accepts the create request but silently drops rules[0].schedule_rules
+// (GrowthBook's "schedule-feature-flag" is a Pro-and-above commercial
+// feature), and the provider must turn that into a clear error instead of
+// surfacing the Plugin Framework's confusing "element 0 has vanished"
+// consistency failure. Create still calls resp.State.Set before appending
+// that error, so the feature is tracked (tainted) rather than orphaned: the
+// second step's corrected config (no schedule_rules) applies as an Update,
+// not "feature already exists". See
+// TestAccFeatureResource_scheduleRulesProErrorTracksState for the
+// fake-server equivalent, which additionally asserts via CheckDestroy that
+// the feature is gone server-side afterward.
+func TestAccFeatureResource_scheduleRulesRequiresProLive(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") == "" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	key := acctest.RandomWithPrefix("tf-acc-")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "growthbook_feature" "test" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      schedule_type    = "schedule"
+      schedule_rules = [
+        { enabled = true, timestamp = "2026-01-01T00:00:00Z" },
+      ]
+    },
+  ]
+}
+`, key),
+				ExpectError: regexp.MustCompile(`Pro plan`),
+			},
+			{
+				// If Create hadn't tracked state, this would fail with
+				// "feature already exists" instead of applying as an Update.
+				Config: fmt.Sprintf(`
+resource "growthbook_feature" "test" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+    },
+  ]
+}
+`, key),
+				Check: resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.type", "force"),
+			},
+		},
+	})
+}

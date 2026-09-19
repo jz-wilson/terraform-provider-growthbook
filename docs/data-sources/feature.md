@@ -69,6 +69,8 @@ Read-Only:
 - `prerequisites` (Attributes List) (see [below for nested schema](#nestedatt--rules--prerequisites))
 - `rule_id` (String)
 - `saved_groups` (Attributes List) (see [below for nested schema](#nestedatt--rules--saved_groups))
+- `schedule_rules` (Attributes List) (see [below for nested schema](#nestedatt--rules--schedule_rules))
+- `schedule_type` (String)
 - `type` (String)
 - `value` (String)
 - `variations` (Attributes List) (see [below for nested schema](#nestedatt--rules--variations))
@@ -89,6 +91,15 @@ Read-Only:
 
 - `ids` (Set of String)
 - `match` (String)
+
+
+<a id="nestedatt--rules--schedule_rules"></a>
+### Nested Schema for `rules.schedule_rules`
+
+Read-Only:
+
+- `enabled` (Boolean)
+- `timestamp` (String)
 
 
 <a id="nestedatt--rules--variations"></a>

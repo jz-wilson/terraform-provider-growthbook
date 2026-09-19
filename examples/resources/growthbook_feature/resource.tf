@@ -44,6 +44,15 @@ resource "growthbook_feature" "checkout_redesign" {
       hash_attribute = "id"
       value          = "true"
       environments   = ["staging"]
+
+      # schedule_rules is a simple time-based on/off schedule; it requires
+      # GrowthBook Pro. Like rules[].prerequisites, it is unmanaged unless
+      # set here, and set to [] to explicitly clear it.
+      schedule_type = "schedule"
+      schedule_rules = [
+        { enabled = true, timestamp = "2026-06-01T00:00:00Z" },
+        { enabled = false, timestamp = null },
+      ]
     },
     {
       type          = "experiment-ref"

@@ -6,7 +6,9 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -36,6 +38,17 @@ type prerequisiteModel struct {
 	Condition types.String `tfsdk:"condition"`
 }
 
+// scheduleRuleModel is one on/off transition in a rule's schedule. A null
+// Timestamp is an open-ended transition. Timestamp uses timetypes.RFC3339
+// rather than a plain types.String so that equivalent instants which differ
+// only in formatting (GrowthBook round-trips a configured
+// "2026-06-01T00:00:00Z" as "2026-06-01T00:00:00.000Z") don't produce a
+// diff or an inconsistent-result-after-apply error.
+type scheduleRuleModel struct {
+	Enabled   types.Bool        `tfsdk:"enabled"`
+	Timestamp timetypes.RFC3339 `tfsdk:"timestamp"`
+}
+
 // ruleModel is one entry of a feature's ordered rules list.
 type ruleModel struct {
 	Type            types.String        `tfsdk:"type"`
@@ -52,6 +65,8 @@ type ruleModel struct {
 	ExperimentID    types.String        `tfsdk:"experiment_id"`
 	Variations      []variationModel    `tfsdk:"variations"`
 	RuleID          types.String        `tfsdk:"rule_id"`
+	ScheduleType    types.String        `tfsdk:"schedule_type"`
+	ScheduleRules   []scheduleRuleModel `tfsdk:"schedule_rules"`
 }
 
 // environmentModel is one entry of a feature's environments map.
@@ -168,6 +183,41 @@ func featurePrerequisitesToAPI(ctx context.Context, set types.Set, diags *diag.D
 	return &out
 }
 
+// scheduleRulesToAPI converts a rule's schedule_rules list into the wire
+// representation. Like prerequisitesToAPI, this is a plain (possibly nil)
+// slice: it backs ruleModel.ScheduleRules, embedded in a rule that's always
+// replaced wholesale on update.
+func scheduleRulesToAPI(rules []scheduleRuleModel) []growthbook.ScheduleRule {
+	if rules == nil {
+		return nil
+	}
+	out := make([]growthbook.ScheduleRule, 0, len(rules))
+	for _, sr := range rules {
+		var ts *string
+		if !sr.Timestamp.IsNull() && !sr.Timestamp.IsUnknown() {
+			v := sr.Timestamp.ValueString()
+			ts = &v
+		}
+		out = append(out, growthbook.ScheduleRule{Enabled: sr.Enabled.ValueBool(), Timestamp: ts})
+	}
+	return out
+}
+
+func scheduleRulesFromAPI(rules []growthbook.ScheduleRule, diags *diag.Diagnostics) []scheduleRuleModel {
+	// Same normalization as prerequisitesFromAPI: treat an empty response
+	// array as absent so an unconfigured attribute reads back as null.
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]scheduleRuleModel, 0, len(rules))
+	for _, sr := range rules {
+		ts, d := timetypes.NewRFC3339PointerValue(sr.Timestamp)
+		diags.Append(d...)
+		out = append(out, scheduleRuleModel{Enabled: types.BoolValue(sr.Enabled), Timestamp: ts})
+	}
+	return out
+}
+
 // ruleToAPI converts one Terraform rule model into the wire representation.
 func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growthbook.FeatureRule {
 	condition := ""
@@ -193,6 +243,8 @@ func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growth
 	}
 	out.Environments = stringSetToSlice(ctx, r.Environments, diags)
 	out.Prerequisites = prerequisitesToAPI(r.Prerequisites)
+	out.ScheduleType = r.ScheduleType.ValueString()
+	out.ScheduleRules = scheduleRulesToAPI(r.ScheduleRules)
 	for _, sg := range r.SavedGroups {
 		out.SavedGroups = append(out.SavedGroups, growthbook.FeatureSavedGroupTargeting{
 			Match: sg.Match.ValueString(),
@@ -221,6 +273,8 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		HashAttribute:   optionalString(r.HashAttribute),
 		ExperimentID:    optionalString(r.ExperimentID),
 		RuleID:          types.StringValue(r.ID),
+		ScheduleType:    optionalString(r.ScheduleType),
+		ScheduleRules:   scheduleRulesFromAPI(r.ScheduleRules, diags),
 	}
 	// enabled is Optional+Computed with a default of true, matching
 	// GrowthBook's own default for a rule that doesn't specify it.
@@ -389,6 +443,44 @@ func (v jsonStringValidator) ValidateString(_ context.Context, req validator.Str
 			req.Path,
 			"Invalid JSON String Value",
 			"A string value was provided that is not valid JSON (RFC 7159): "+req.ConfigValue.ValueString(),
+		)
+	}
+}
+
+// utcTimestampValidator requires an RFC3339 timestamp to be expressed in
+// UTC (a "Z" suffix or an explicit "+00:00" offset). GrowthBook always
+// stores and re-emits schedule_rules timestamps in UTC, and
+// timetypes.RFC3339's semantic equality only normalizes "Z" against
+// "+00:00" - not other offsets expressing the same instant - so a
+// configured non-UTC offset (e.g. "+02:00") would apply successfully but
+// then fail Terraform's post-apply consistency check once GrowthBook
+// echoes it back reformatted. Rejecting it at plan time turns that into an
+// immediate, actionable validation error instead.
+type utcTimestampValidator struct{}
+
+func (v utcTimestampValidator) Description(_ context.Context) string {
+	return "value must be an RFC3339 timestamp in UTC (a \"Z\" suffix or \"+00:00\" offset)"
+}
+
+func (v utcTimestampValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v utcTimestampValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, req.ConfigValue.ValueString())
+	if err != nil {
+		// The RFC3339 CustomType's own attribute validation reports the
+		// format error; nothing more to add here.
+		return
+	}
+	if _, offset := t.Zone(); offset != 0 {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Timestamp Must Be UTC",
+			"timestamp must be in UTC (end with Z), e.g. 2026-06-01T00:00:00Z; GrowthBook stores UTC. Got: "+req.ConfigValue.ValueString(),
 		)
 	}
 }
