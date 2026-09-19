@@ -5,7 +5,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -14,16 +13,19 @@ import (
 )
 
 // TestAccSavedGroupResource_live exercises full CRUD against a real
-// GrowthBook organization. It only runs when GROWTHBOOK_LIVE=1, in addition
-// to the usual TF_ACC=1 and GROWTHBOOK_API_KEY / GROWTHBOOK_API_URL that
-// testAccPreCheck requires. Saved groups are creatable on the GrowthBook free
+// GrowthBook organization. It only runs when GROWTHBOOK_LIVE=1 (see
+// testAccLivePreCheck). Saved groups are creatable on the GrowthBook free
 // plan.
+//
+// A type="list" saved group's attribute_key must reference an attribute
+// that already exists in the organization, or the API returns HTTP 400
+// ("Unknown attributeKey"); a fresh CI GrowthBook instance has none, so this
+// test creates a growthbook_attribute alongside the saved group and
+// references its property.
 func TestAccSavedGroupResource_live(t *testing.T) {
-	if os.Getenv("GROWTHBOOK_LIVE") != "1" {
-		t.Skip("set GROWTHBOOK_LIVE=1 to run live GrowthBook acceptance tests")
-	}
-	testAccPreCheck(t)
+	testAccLivePreCheck(t)
 
+	property := acctest.RandomWithPrefix("tf-acc-attr")
 	name := acctest.RandomWithPrefix("tf-acc")
 	updatedName := name + "-updated"
 
@@ -32,16 +34,22 @@ func TestAccSavedGroupResource_live(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: fmt.Sprintf(`
+resource "growthbook_attribute" "test" {
+  property = %q
+  datatype = "string"
+}
+
 resource "growthbook_saved_group" "test" {
   name          = %q
   type          = "list"
-  attribute_key = "userId"
+  attribute_key = growthbook_attribute.test.property
   values        = ["user-1", "user-2"]
 }
-`, name),
+`, property, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_saved_group.test", "name", name),
 					resource.TestCheckResourceAttr("growthbook_saved_group.test", "type", "list"),
+					resource.TestCheckResourceAttr("growthbook_saved_group.test", "attribute_key", property),
 					resource.TestCheckResourceAttr("growthbook_saved_group.test", "values.#", "2"),
 					resource.TestCheckResourceAttrSet("growthbook_saved_group.test", "id"),
 				),
@@ -51,13 +59,18 @@ resource "growthbook_saved_group" "test" {
 			},
 			{
 				Config: fmt.Sprintf(`
+resource "growthbook_attribute" "test" {
+  property = %q
+  datatype = "string"
+}
+
 resource "growthbook_saved_group" "test" {
   name          = %q
   type          = "list"
-  attribute_key = "userId"
+  attribute_key = growthbook_attribute.test.property
   values        = []
 }
-`, updatedName),
+`, property, updatedName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_saved_group.test", "name", updatedName),
 					resource.TestCheckResourceAttr("growthbook_saved_group.test", "values.#", "0"),
