@@ -453,6 +453,66 @@ resource "growthbook_feature" "child" {
 	})
 }
 
+// TestAccFeatureResource_unconfiguredEnvironmentsStayUnmanaged proves that
+// leaving `environments` (and `rules`) unset in config stays unmanaged
+// through a refresh, even when the API's response includes a default
+// per-environment entry the request never asked for - real GrowthBook does
+// exactly this (every feature gets a "production" entry regardless of what
+// was requested). This uses its own minimal server, separate from
+// fakeFeatureServer, so the default doesn't change what every other test
+// in this file sees on import. Before the fix, Read() only nulled
+// rules/environments out when the API happened to echo back nothing, so a
+// never-configured attribute with a non-empty default would drift forever.
+func TestAccFeatureResource_unconfiguredEnvironmentsStayUnmanaged(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/features", func(w http.ResponseWriter, r *http.Request) {
+		featureWriteJSON(w, http.StatusOK, map[string]any{"feature": defaultEnvFeature})
+	})
+	mux.HandleFunc("/v2/features/", func(w http.ResponseWriter, r *http.Request) {
+		featureWriteJSON(w, http.StatusOK, map[string]any{"feature": defaultEnvFeature})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	t.Setenv("TF_ACC", "1")
+	t.Setenv("GROWTHBOOK_API_KEY", "secret_test")
+	t.Setenv("GROWTHBOOK_API_URL", server.URL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fakeAPIProviderConfig() + `
+resource "growthbook_feature" "bare" {
+  id            = "ft_bare"
+  value_type    = "boolean"
+  default_value = "false"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("growthbook_feature.bare", "environments.%"),
+					resource.TestCheckNoResourceAttr("growthbook_feature.bare", "rules.#"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+		},
+	})
+}
+
+// defaultEnvFeature is the canned response TestAccFeatureResource_
+// unconfiguredEnvironmentsStayUnmanaged's server always returns: a feature
+// with a "production" environment entry despite no request ever having
+// asked for one, matching real GrowthBook's default.
+var defaultEnvFeature = growthbook.Feature{
+	ID:           "ft_bare",
+	ValueType:    "boolean",
+	DefaultValue: "false",
+	Environments: map[string]growthbook.FeatureEnvironment{"production": {Enabled: false}},
+	Revision:     &growthbook.FeatureRevision{Version: 1},
+}
+
 func fakeAPIProviderConfig() string {
 	return `provider "growthbook" {}
 `

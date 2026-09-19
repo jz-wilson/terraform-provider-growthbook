@@ -108,14 +108,27 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	newState := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	// rules and environments are unmanaged when absent from a prior state
-	// that itself was never given them by config; preserve that instead of
-	// forcing the API's current values onto a resource that doesn't own
-	// them.
-	if state.Rules == nil && len(newState.Rules) == 0 {
-		newState.Rules = nil
-	}
-	if state.Environments == nil && len(newState.Environments) == 0 {
-		newState.Environments = nil
+	// that itself was never given them by config; preserve that
+	// unconditionally instead of forcing the API's current values onto a
+	// resource that doesn't own them. This must not depend on whether the
+	// API's response happens to be empty: GrowthBook gives every feature a
+	// default per-environment entry (e.g. "production") even when nothing
+	// ever configured environments, so an API-emptiness check alone would
+	// leave a never-configured attribute reading back as non-null and
+	// drifting forever.
+	//
+	// Skip this on import: ImportStatePassthroughID populates only "id" in
+	// state, so every other field (including ValueType, checked here) is
+	// null too, which would otherwise look identical to "genuinely
+	// unmanaged" and drop the real rules/environments straight out of the
+	// imported state.
+	if !state.ValueType.IsNull() {
+		if state.Rules == nil {
+			newState.Rules = nil
+		}
+		if state.Environments == nil {
+			newState.Environments = nil
+		}
 	}
 	if !state.Prerequisites.IsNull() && newState.Prerequisites.IsNull() {
 		// state.Prerequisites was declared (possibly []); the API omits an
