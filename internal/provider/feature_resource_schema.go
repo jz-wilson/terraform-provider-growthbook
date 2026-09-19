@@ -148,9 +148,11 @@ func featureRuleSchema() schema.ListNestedAttribute {
 							"timestamp": schema.StringAttribute{
 								CustomType: timetypes.RFC3339Type{},
 								Optional:   true,
-								MarkdownDescription: "RFC3339 timestamp when this transition activates. Omit for an open-ended transition. " +
-									"Equivalent instants that differ only in formatting (e.g. a `Z` suffix vs. `+00:00`, or a " +
-									"GrowthBook-added `.000` fraction) do not produce a diff.",
+								MarkdownDescription: "RFC3339 timestamp when this transition activates, in UTC (a `Z` suffix or `+00:00` offset - " +
+									"GrowthBook always stores and returns UTC). Omit for an open-ended transition. Equivalent instants " +
+									"that differ only in formatting (`Z` vs. `+00:00`, or a GrowthBook-added `.000` fraction) do not " +
+									"produce a diff.",
+								Validators: []validator.String{utcTimestampValidator{}},
 							},
 						},
 					},

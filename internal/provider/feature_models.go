@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -442,6 +443,44 @@ func (v jsonStringValidator) ValidateString(_ context.Context, req validator.Str
 			req.Path,
 			"Invalid JSON String Value",
 			"A string value was provided that is not valid JSON (RFC 7159): "+req.ConfigValue.ValueString(),
+		)
+	}
+}
+
+// utcTimestampValidator requires an RFC3339 timestamp to be expressed in
+// UTC (a "Z" suffix or an explicit "+00:00" offset). GrowthBook always
+// stores and re-emits schedule_rules timestamps in UTC, and
+// timetypes.RFC3339's semantic equality only normalizes "Z" against
+// "+00:00" - not other offsets expressing the same instant - so a
+// configured non-UTC offset (e.g. "+02:00") would apply successfully but
+// then fail Terraform's post-apply consistency check once GrowthBook
+// echoes it back reformatted. Rejecting it at plan time turns that into an
+// immediate, actionable validation error instead.
+type utcTimestampValidator struct{}
+
+func (v utcTimestampValidator) Description(_ context.Context) string {
+	return "value must be an RFC3339 timestamp in UTC (a \"Z\" suffix or \"+00:00\" offset)"
+}
+
+func (v utcTimestampValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v utcTimestampValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, req.ConfigValue.ValueString())
+	if err != nil {
+		// The RFC3339 CustomType's own attribute validation reports the
+		// format error; nothing more to add here.
+		return
+	}
+	if _, offset := t.Zone(); offset != 0 {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Timestamp Must Be UTC",
+			"timestamp must be in UTC (end with Z), e.g. 2026-06-01T00:00:00Z; GrowthBook stores UTC. Got: "+req.ConfigValue.ValueString(),
 		)
 	}
 }

@@ -10,6 +10,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	growthbook "github.com/jz-wilson/growthbook-go"
@@ -191,6 +193,37 @@ func TestScheduleRuleTimestamp_InvalidValueFailsValidation(t *testing.T) {
 	}
 	if !v.IsUnknown() {
 		t.Errorf("NewRFC3339Value(invalid) value = %#v, want unknown", v)
+	}
+}
+
+// TestUTCTimestampValidator proves that timestamp validation accepts a "Z"
+// suffix and an equivalent explicit "+00:00" offset, but rejects any other
+// offset - the case timetypes.RFC3339's own semantic equality does not
+// normalize, and which GrowthBook (always UTC) would otherwise turn into a
+// post-apply "inconsistent result" once scheduling round-trips on a Pro
+// plan.
+func TestUTCTimestampValidator(t *testing.T) {
+	cases := []struct {
+		name      string
+		value     string
+		wantError bool
+	}{
+		{"Z suffix", "2026-06-01T00:00:00Z", false},
+		{"+00:00 offset", "2026-06-01T00:00:00+00:00", false},
+		{"non-UTC offset", "2026-06-01T02:00:00+02:00", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := validator.StringRequest{
+				Path:        path.Root("timestamp"),
+				ConfigValue: types.StringValue(tc.value),
+			}
+			var resp validator.StringResponse
+			utcTimestampValidator{}.ValidateString(context.Background(), req, &resp)
+			if resp.Diagnostics.HasError() != tc.wantError {
+				t.Errorf("ValidateString(%q) diags = %v, wantError %v", tc.value, resp.Diagnostics, tc.wantError)
+			}
+		})
 	}
 }
 
