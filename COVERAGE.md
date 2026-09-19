@@ -136,6 +136,26 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 | `sseEnabled` | `n/a` | no | Server-Sent Events streaming toggle for this connection; response-only, not modeled, out of scope for 0.1. |
 | `n/a` | `connected` | yes | Terraform-only field with no corresponding property in the `/v1/sdk-connections` OpenAPI schema reviewed for this audit. It is plumbed straight from the Go client's `SDKConnection.Connected`. Could not be verified against the OpenAPI extract used here; flagged as unverified rather than invented. |
 
+## growthbook_saved_group
+
+| API Field | Terraform Attribute | Supported | Notes |
+|---|---|---|---|
+| `id` | `id` | yes | Server-assigned. |
+| `name` | `name` | yes | |
+| `type` | `type` | yes | `condition` or `list`. Immutable after creation: the update request schema (`additionalProperties: false`) does not accept `type` at all, so the provider only sends it on create. |
+| `condition` | `condition` | yes | Applies when `type = "condition"`. |
+| `attributeKey` | `attribute_key` | yes | Applies when `type = "list"`. Immutable after creation, same reason as `type`: absent from the update request schema. Must reference an attribute that already exists in the organization (see `growthbook_attribute`); the API returns HTTP 400 ("Unknown attributeKey") for an attribute that doesn't exist yet. |
+| `values` | `values` | yes | Applies when `type = "list"`. `*[]string` on the client: a nil pointer (unconfigured attribute) omits the field and leaves the server value unchanged; a pointer to an empty slice (`values = []`) sends `[]` and clears it. |
+| `owner` | `owner` | yes | Optional+computed: defaults to the PAT-associated user when omitted on create. |
+| `ownerEmail` | `owner_email` | computed-only | Response-only, resolved from `owner` when possible. |
+| `description` | `description` | computed-only | Present in the response schema but not accepted by either the create or update request schema, so it cannot be set through this provider. |
+| `projects` | `projects` | yes | Same nil-omits/empty-clears `*[]string` handling as `values`. |
+| `archived` | `archived` | computed-only | No archive/unarchive endpoint is modeled; not settable through this resource. |
+| `useEmptyListGroup` | `use_empty_list_group` | computed-only | Response-only, GrowthBook-managed. |
+| `dateCreated` | `date_created` | computed-only | Response-only. |
+| `dateUpdated` | `date_updated` | computed-only | Response-only. |
+| `bypassApproval` (request-only) | `n/a` | no | Escape hatch to apply a change immediately under an org that requires draft approvals; not modeled, same governance-workflow reason as the feature-level escape hatches above. |
+
 ## Not yet modelled
 
 - **Feature-level secondary-project targeting** (`targetingAllProjects`, `targetingProjects`) - a feature can be served to projects beyond its primary `project`; would need two new attributes on `growthbook_feature` plus request/response wiring.
@@ -155,7 +175,7 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 - **SDK connection Server-Sent Events flag** (`sseEnabled`) - not modeled.
 - **Config-mode API surface generally** (the `/v1/configs-revisions/{key}/{version}/projection` path and any `/configs` resource) - out of scope for 0.1 in its entirety; no resource or data source in this provider touches configs.
 - **Experiments API** - GrowthBook's experiments (as opposed to experiment-ref rules pointing at them) have no dedicated resource or data source in this provider at all; only references to experiment ids appear inside feature rules and SDK connection settings.
-- **Saved groups API** - saved groups are referenced by id/match type inside feature rules (`saved_groups`), but there is no `growthbook_saved_group` resource or data source to create or manage the groups themselves.
+- **Saved group approval workflow** (`bypassApproval` on create/update) - see the `growthbook_saved_group` table above.
 - **Organization/member/team management APIs** - no resource or data source in this provider manages organization settings, members, teams, or roles.
 
 ## growthbook_attribute

@@ -75,14 +75,14 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 	case http.MethodGet:
 		conn, ok := f.byID[id]
 		if !ok {
-			sdkWriteAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w)
 			return
 		}
 		sdkWriteJSON(w, map[string]any{"sdkConnection": conn})
 	case http.MethodPut:
 		existing, ok := f.byID[id]
 		if !ok {
-			sdkWriteAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w)
 			return
 		}
 		var req map[string]any
@@ -101,7 +101,7 @@ func (f *fakeSDKConnectionServer) handleItem(w http.ResponseWriter, r *http.Requ
 		sdkWriteJSON(w, map[string]any{"sdkConnection": merged})
 	case http.MethodDelete:
 		if _, ok := f.byID[id]; !ok {
-			sdkWriteAPIError(w, http.StatusNotFound, "not found")
+			sdkWriteAPIError(w)
 			return
 		}
 		delete(f.byID, id)
@@ -179,10 +179,12 @@ func sdkWriteJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func sdkWriteAPIError(w http.ResponseWriter, status int, message string) {
+// sdkWriteAPIError writes a fake 404 "not found" API error response, the
+// only case every fake-server caller in this package needs.
+func sdkWriteAPIError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"message": message})
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": "not found"})
 }
 
 // TestAccSDKConnectionResource_fake drives full CRUD (create, update,

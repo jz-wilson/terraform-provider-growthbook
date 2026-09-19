@@ -41,6 +41,10 @@ func init() {
 		Name: "growthbook_attribute",
 		F:    sweepAttributes,
 	})
+	resource.AddTestSweepers("growthbook_saved_group", &resource.Sweeper{
+		Name: "growthbook_saved_group",
+		F:    sweepSavedGroups,
+	})
 }
 
 // sweeperClient builds a client from the same GROWTHBOOK_API_KEY /
@@ -141,6 +145,39 @@ func sweepAttributes(_ string) error {
 		}
 		if delErr := client.DeleteAttribute(ctx, attr.Property); delErr != nil && !growthbook.IsNotFound(delErr) {
 			errs = append(errs, fmt.Errorf("deleting attribute %q: %w", attr.Property, delErr))
+		}
+	}
+	return joinErrors(errs)
+}
+
+// sweepSavedGroups deletes every saved group whose name starts with tf-acc-.
+func sweepSavedGroups(_ string) error {
+	client, err := sweeperClient()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+
+	groups, err := client.ListSavedGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("listing saved groups to sweep: %w", err)
+	}
+
+	var errs []error
+	for _, g := range groups {
+		if !strings.HasPrefix(g.Name, acctestNamePrefix) {
+			continue
+		}
+		// GrowthBook refuses to delete a saved group that isn't archived
+		// first; mirrors SavedGroupResource.Delete, including reporting a
+		// blocked archive (422, "still referenced") instead of letting
+		// delete's generic "must be archived" error hide it.
+		_, archErr := client.ArchiveSavedGroup(ctx, g.ID)
+		if archErr != nil && growthbook.IsNotFound(archErr) {
+			continue
+		}
+		if delErr := client.DeleteSavedGroup(ctx, g.ID); delErr != nil && !growthbook.IsNotFound(delErr) {
+			errs = append(errs, fmt.Errorf("deleting saved group %q (%s): %s", g.Name, g.ID, savedGroupDeleteError(archErr, delErr)))
 		}
 	}
 	return joinErrors(errs)
