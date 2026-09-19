@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -57,6 +58,18 @@ func savedGroupModelFromAPI(ctx context.Context, g *growthbook.SavedGroup) (Save
 		DateUpdated:  types.StringValue(g.DateUpdated),
 	}
 	return model, diags
+}
+
+// savedGroupDeleteError formats the error for a failed delete, including
+// a prior archive failure (archErr) when there was one. A blocked archive
+// (HTTP 422, "still referenced by a feature") is the actionable cause; the
+// delete call's own error alone would only report the generic "must be
+// archived", hiding it.
+func savedGroupDeleteError(archErr, delErr error) string {
+	if archErr != nil {
+		return fmt.Sprintf("archiving before delete: %s; deleting: %s", archErr, delErr)
+	}
+	return delErr.Error()
 }
 
 // savedGroupCreateRequest builds the request for POST /v1/saved-groups. Type

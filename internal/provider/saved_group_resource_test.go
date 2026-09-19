@@ -30,6 +30,10 @@ type fakeSavedGroupServer struct {
 	// posts records every update request body (POST /v1/saved-groups/{id}),
 	// in order.
 	posts []map[string]any
+	// archiveBlockedMessage, when set, makes every archive call fail with
+	// HTTP 422 and this message instead of archiving, simulating a saved
+	// group still referenced by a feature.
+	archiveBlockedMessage string
 }
 
 func newFakeSavedGroupServer() *fakeSavedGroupServer {
@@ -135,6 +139,12 @@ func (f *fakeSavedGroupServer) handleArchive(w http.ResponseWriter, id string) {
 	group, ok := f.byID[id]
 	if !ok {
 		sdkWriteAPIError(w)
+		return
+	}
+	if f.archiveBlockedMessage != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{"message": f.archiveBlockedMessage})
 		return
 	}
 	group["archived"] = true
@@ -415,5 +425,46 @@ func TestFakeSavedGroupServer_deleteRequiresArchive(t *testing.T) {
 	}
 	if err := c.DeleteSavedGroup(ctx, created.ID); err != nil {
 		t.Fatalf("DeleteSavedGroup() after archive: error = %v", err)
+	}
+}
+
+// TestSavedGroupDeleteError_blockedArchive checks that a blocked archive
+// (HTTP 422, "still referenced by a feature") is reported in the delete
+// error, rather than being hidden behind the delete call's own more generic
+// "must be archived" message.
+func TestSavedGroupDeleteError_blockedArchive(t *testing.T) {
+	fake := newFakeSavedGroupServer()
+	fake.archiveBlockedMessage = "still referenced by a feature"
+	srv := fake.httptestServer()
+	defer srv.Close()
+
+	c, err := growthbook.New(growthbook.Credentials{APIKey: "secret_test", APIURL: srv.URL})
+	if err != nil {
+		t.Fatalf("growthbook.New() error = %v", err)
+	}
+	ctx := context.Background()
+
+	fake.archiveBlockedMessage = ""
+	created, err := c.CreateSavedGroup(ctx, growthbook.SavedGroupRequest{Name: "n", Type: "list", AttributeKey: "userId"})
+	if err != nil {
+		t.Fatalf("CreateSavedGroup() error = %v", err)
+	}
+	fake.archiveBlockedMessage = "still referenced by a feature"
+
+	_, archErr := c.ArchiveSavedGroup(ctx, created.ID)
+	if archErr == nil {
+		t.Fatal("ArchiveSavedGroup() with a blocked archive: got nil error, want a failure")
+	}
+	delErr := c.DeleteSavedGroup(ctx, created.ID)
+	if delErr == nil {
+		t.Fatal("DeleteSavedGroup() after a blocked archive: got nil error, want a failure (not archived)")
+	}
+
+	got := savedGroupDeleteError(archErr, delErr)
+	if !strings.Contains(got, "still referenced by a feature") {
+		t.Errorf("savedGroupDeleteError() = %q, want it to contain the archive's 422 message", got)
+	}
+	if !strings.Contains(got, "must be archived") {
+		t.Errorf("savedGroupDeleteError() = %q, want it to also contain the delete error", got)
 	}
 }

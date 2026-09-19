@@ -213,10 +213,13 @@ func (r *SavedGroupResource) Update(ctx context.Context, req resource.UpdateRequ
 // DELETE /v1/saved-groups/{id} on a group that isn't archived first (HTTP
 // 400). If the group is already gone, the archive call itself reports
 // IsNotFound and delete is skipped. Any other archive error (for example,
-// already archived) is not fatal here; if it actually blocked archiving
-// (HTTP 422, the group is still referenced by a feature, experiment, or
-// another saved group), the delete call below surfaces that as its own
-// error.
+// already archived, or HTTP 422 because the group is still referenced by a
+// feature, experiment, or another saved group) is not immediately fatal:
+// delete is still attempted, since an already-archived group must still be
+// deleted. If delete then also fails, the error includes the archive
+// failure too, so a blocked archive (422, "still referenced") is reported
+// instead of being hidden behind the delete call's more generic "must be
+// archived" message.
 func (r *SavedGroupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data SavedGroupModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -225,12 +228,14 @@ func (r *SavedGroupResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 
 	id := data.ID.ValueString()
-	if _, err := r.client.ArchiveSavedGroup(ctx, id); err != nil && growthbook.IsNotFound(err) {
+	_, archErr := r.client.ArchiveSavedGroup(ctx, id)
+	if archErr != nil && growthbook.IsNotFound(archErr) {
 		return
 	}
 
-	if err := r.client.DeleteSavedGroup(ctx, id); err != nil && !growthbook.IsNotFound(err) {
-		resp.Diagnostics.AddError("Unable to delete GrowthBook saved group", err.Error())
+	delErr := r.client.DeleteSavedGroup(ctx, id)
+	if delErr != nil && !growthbook.IsNotFound(delErr) {
+		resp.Diagnostics.AddError("Unable to delete GrowthBook saved group", savedGroupDeleteError(archErr, delErr))
 	}
 }
 

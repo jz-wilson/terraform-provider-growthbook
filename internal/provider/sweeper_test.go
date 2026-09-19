@@ -169,12 +169,15 @@ func sweepSavedGroups(_ string) error {
 			continue
 		}
 		// GrowthBook refuses to delete a saved group that isn't archived
-		// first; mirrors SavedGroupResource.Delete.
-		if _, archErr := client.ArchiveSavedGroup(ctx, g.ID); archErr != nil && growthbook.IsNotFound(archErr) {
+		// first; mirrors SavedGroupResource.Delete, including reporting a
+		// blocked archive (422, "still referenced") instead of letting
+		// delete's generic "must be archived" error hide it.
+		_, archErr := client.ArchiveSavedGroup(ctx, g.ID)
+		if archErr != nil && growthbook.IsNotFound(archErr) {
 			continue
 		}
 		if delErr := client.DeleteSavedGroup(ctx, g.ID); delErr != nil && !growthbook.IsNotFound(delErr) {
-			errs = append(errs, fmt.Errorf("deleting saved group %q (%s): %w", g.Name, g.ID, delErr))
+			errs = append(errs, fmt.Errorf("deleting saved group %q (%s): %s", g.Name, g.ID, savedGroupDeleteError(archErr, delErr)))
 		}
 	}
 	return joinErrors(errs)
