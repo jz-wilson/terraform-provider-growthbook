@@ -226,6 +226,12 @@ resource "growthbook_feature" "child" {
 				ResourceName:      "growthbook_feature.child",
 				ImportState:       true,
 				ImportStateVerify: true,
+				// environments/rules are never configured by this test, so
+				// they're unmanaged; import still reads GrowthBook's actual
+				// per-environment defaults (e.g. "production"), which
+				// ImportStateVerify would otherwise flag as a mismatch
+				// against the prior (unmanaged/null) state.
+				ImportStateVerifyIgnore: []string{"environments", "rules"},
 				Config: parentConfig + fmt.Sprintf(`
 resource "growthbook_feature" "child" {
   id            = %q
