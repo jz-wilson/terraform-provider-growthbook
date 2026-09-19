@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -36,6 +37,17 @@ type prerequisiteModel struct {
 	Condition types.String `tfsdk:"condition"`
 }
 
+// scheduleRuleModel is one on/off transition in a rule's schedule. A null
+// Timestamp is an open-ended transition. Timestamp uses timetypes.RFC3339
+// rather than a plain types.String so that equivalent instants which differ
+// only in formatting (GrowthBook round-trips a configured
+// "2026-06-01T00:00:00Z" as "2026-06-01T00:00:00.000Z") don't produce a
+// diff or an inconsistent-result-after-apply error.
+type scheduleRuleModel struct {
+	Enabled   types.Bool        `tfsdk:"enabled"`
+	Timestamp timetypes.RFC3339 `tfsdk:"timestamp"`
+}
+
 // ruleModel is one entry of a feature's ordered rules list.
 type ruleModel struct {
 	Type            types.String        `tfsdk:"type"`
@@ -52,6 +64,8 @@ type ruleModel struct {
 	ExperimentID    types.String        `tfsdk:"experiment_id"`
 	Variations      []variationModel    `tfsdk:"variations"`
 	RuleID          types.String        `tfsdk:"rule_id"`
+	ScheduleType    types.String        `tfsdk:"schedule_type"`
+	ScheduleRules   []scheduleRuleModel `tfsdk:"schedule_rules"`
 }
 
 // environmentModel is one entry of a feature's environments map.
@@ -168,6 +182,41 @@ func featurePrerequisitesToAPI(ctx context.Context, set types.Set, diags *diag.D
 	return &out
 }
 
+// scheduleRulesToAPI converts a rule's schedule_rules list into the wire
+// representation. Like prerequisitesToAPI, this is a plain (possibly nil)
+// slice: it backs ruleModel.ScheduleRules, embedded in a rule that's always
+// replaced wholesale on update.
+func scheduleRulesToAPI(rules []scheduleRuleModel) []growthbook.ScheduleRule {
+	if rules == nil {
+		return nil
+	}
+	out := make([]growthbook.ScheduleRule, 0, len(rules))
+	for _, sr := range rules {
+		var ts *string
+		if !sr.Timestamp.IsNull() && !sr.Timestamp.IsUnknown() {
+			v := sr.Timestamp.ValueString()
+			ts = &v
+		}
+		out = append(out, growthbook.ScheduleRule{Enabled: sr.Enabled.ValueBool(), Timestamp: ts})
+	}
+	return out
+}
+
+func scheduleRulesFromAPI(rules []growthbook.ScheduleRule, diags *diag.Diagnostics) []scheduleRuleModel {
+	// Same normalization as prerequisitesFromAPI: treat an empty response
+	// array as absent so an unconfigured attribute reads back as null.
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]scheduleRuleModel, 0, len(rules))
+	for _, sr := range rules {
+		ts, d := timetypes.NewRFC3339PointerValue(sr.Timestamp)
+		diags.Append(d...)
+		out = append(out, scheduleRuleModel{Enabled: types.BoolValue(sr.Enabled), Timestamp: ts})
+	}
+	return out
+}
+
 // ruleToAPI converts one Terraform rule model into the wire representation.
 func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growthbook.FeatureRule {
 	condition := ""
@@ -193,6 +242,8 @@ func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growth
 	}
 	out.Environments = stringSetToSlice(ctx, r.Environments, diags)
 	out.Prerequisites = prerequisitesToAPI(r.Prerequisites)
+	out.ScheduleType = r.ScheduleType.ValueString()
+	out.ScheduleRules = scheduleRulesToAPI(r.ScheduleRules)
 	for _, sg := range r.SavedGroups {
 		out.SavedGroups = append(out.SavedGroups, growthbook.FeatureSavedGroupTargeting{
 			Match: sg.Match.ValueString(),
@@ -221,6 +272,8 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		HashAttribute:   optionalString(r.HashAttribute),
 		ExperimentID:    optionalString(r.ExperimentID),
 		RuleID:          types.StringValue(r.ID),
+		ScheduleType:    optionalString(r.ScheduleType),
+		ScheduleRules:   scheduleRulesFromAPI(r.ScheduleRules, diags),
 	}
 	// enabled is Optional+Computed with a default of true, matching
 	// GrowthBook's own default for a rule that doesn't specify it.

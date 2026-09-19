@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -34,6 +35,10 @@ type fakeFeatureServer struct {
 	// GrowthBook's real behavior on a sub-Enterprise plan (see
 	// requireRulePrerequisitesPersisted).
 	denyRulePrerequisites bool
+	// denyScheduleRules, when set, silently strips a rule's schedule_rules
+	// from every write instead of storing them, mirroring GrowthBook's real
+	// behavior on a sub-Pro plan (see requireScheduleRulesPersisted).
+	denyScheduleRules bool
 }
 
 func newFakeFeatureServer() (*httptest.Server, *fakeFeatureServer) {
@@ -51,6 +56,25 @@ func featureWriteJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// normalizeScheduleRuleTimestamps mimics GrowthBook's real Mongo Date -> ISO
+// round trip: a submitted RFC3339 timestamp comes back reformatted (UTC,
+// millisecond-precision, "Z" suffix) rather than byte-identical to what was
+// sent. This is what exercises the provider's semantic-equality handling
+// (timetypes.RFC3339) instead of a naive string comparison.
+func normalizeScheduleRuleTimestamps(rules []growthbook.ScheduleRule) {
+	for i := range rules {
+		if rules[i].Timestamp == nil {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, *rules[i].Timestamp)
+		if err != nil {
+			continue
+		}
+		normalized := t.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+		rules[i].Timestamp = &normalized
+	}
 }
 
 func featureWriteAPIError(w http.ResponseWriter, status int, message string) {
@@ -120,6 +144,10 @@ func (f *fakeFeatureServer) applyFeatureRequest(feature *growthbook.Feature, req
 			if f.denyRulePrerequisites {
 				rules[i].Prerequisites = nil
 			}
+			if f.denyScheduleRules {
+				rules[i].ScheduleRules = nil
+			}
+			normalizeScheduleRuleTimestamps(rules[i].ScheduleRules)
 		}
 		feature.Rules = rules
 	}
