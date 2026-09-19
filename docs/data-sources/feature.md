@@ -38,6 +38,7 @@ output "checkout_redesign_default_value" {
 - `description` (String)
 - `environments` (Attributes Map) (see [below for nested schema](#nestedatt--environments))
 - `owner` (String)
+- `prerequisites` (Attributes List) (see [below for nested schema](#nestedatt--prerequisites))
 - `project` (String)
 - `revision_version` (Number)
 - `rules` (Attributes List) (see [below for nested schema](#nestedatt--rules))
@@ -50,6 +51,15 @@ output "checkout_redesign_default_value" {
 Read-Only:
 
 - `enabled` (Boolean)
+
+
+<a id="nestedatt--prerequisites"></a>
+### Nested Schema for `prerequisites`
+
+Read-Only:
+
+- `condition` (String)
+- `id` (String)
 
 
 <a id="nestedatt--rules"></a>
@@ -65,11 +75,21 @@ Read-Only:
 - `environments` (Set of String)
 - `experiment_id` (String)
 - `hash_attribute` (String)
+- `prerequisites` (Attributes List) (see [below for nested schema](#nestedatt--rules--prerequisites))
 - `rule_id` (String)
 - `saved_groups` (Attributes List) (see [below for nested schema](#nestedatt--rules--saved_groups))
 - `type` (String)
 - `value` (String)
 - `variations` (Attributes List) (see [below for nested schema](#nestedatt--rules--variations))
+
+<a id="nestedatt--rules--prerequisites"></a>
+### Nested Schema for `rules.prerequisites`
+
+Read-Only:
+
+- `condition` (String)
+- `id` (String)
+
 
 <a id="nestedatt--rules--saved_groups"></a>
 ### Nested Schema for `rules.saved_groups`

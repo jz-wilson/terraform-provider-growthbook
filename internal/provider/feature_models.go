@@ -27,21 +27,30 @@ type variationModel struct {
 	Value       types.String `tfsdk:"value"`
 }
 
+// prerequisiteModel is one entry of a feature's or a rule's prerequisites
+// list: it gates evaluation on another feature (ID) matching a condition
+// evaluated against that parent feature's value.
+type prerequisiteModel struct {
+	ID        types.String `tfsdk:"id"`
+	Condition types.String `tfsdk:"condition"`
+}
+
 // ruleModel is one entry of a feature's ordered rules list.
 type ruleModel struct {
-	Type            types.String      `tfsdk:"type"`
-	Description     types.String      `tfsdk:"description"`
-	Enabled         types.Bool        `tfsdk:"enabled"`
-	Condition       types.String      `tfsdk:"condition"`
-	SavedGroups     []savedGroupModel `tfsdk:"saved_groups"`
-	AllEnvironments types.Bool        `tfsdk:"all_environments"`
-	Environments    types.Set         `tfsdk:"environments"`
-	Value           types.String      `tfsdk:"value"`
-	Coverage        types.Float64     `tfsdk:"coverage"`
-	HashAttribute   types.String      `tfsdk:"hash_attribute"`
-	ExperimentID    types.String      `tfsdk:"experiment_id"`
-	Variations      []variationModel  `tfsdk:"variations"`
-	RuleID          types.String      `tfsdk:"rule_id"`
+	Type            types.String        `tfsdk:"type"`
+	Description     types.String        `tfsdk:"description"`
+	Enabled         types.Bool          `tfsdk:"enabled"`
+	Condition       types.String        `tfsdk:"condition"`
+	SavedGroups     []savedGroupModel   `tfsdk:"saved_groups"`
+	Prerequisites   []prerequisiteModel `tfsdk:"prerequisites"`
+	AllEnvironments types.Bool          `tfsdk:"all_environments"`
+	Environments    types.Set           `tfsdk:"environments"`
+	Value           types.String        `tfsdk:"value"`
+	Coverage        types.Float64       `tfsdk:"coverage"`
+	HashAttribute   types.String        `tfsdk:"hash_attribute"`
+	ExperimentID    types.String        `tfsdk:"experiment_id"`
+	Variations      []variationModel    `tfsdk:"variations"`
+	RuleID          types.String        `tfsdk:"rule_id"`
 }
 
 // environmentModel is one entry of a feature's environments map.
@@ -62,6 +71,7 @@ type featureModel struct {
 	Archived        types.Bool                  `tfsdk:"archived"`
 	Environments    map[string]environmentModel `tfsdk:"environments"`
 	Rules           []ruleModel                 `tfsdk:"rules"`
+	Prerequisites   []prerequisiteModel         `tfsdk:"prerequisites"`
 	RevisionVersion types.Int64                 `tfsdk:"revision_version"`
 	DateCreated     types.String                `tfsdk:"date_created"`
 	DateUpdated     types.String                `tfsdk:"date_updated"`
@@ -92,6 +102,54 @@ func stringSetToSlice(ctx context.Context, set types.Set, diags *diag.Diagnostic
 	return out
 }
 
+// prerequisitesToAPI converts a rule's or feature's prerequisites list into
+// the wire representation. Unlike rulesToAPI/featurePrerequisitesToAPI, this
+// returns a plain (possibly nil) slice: it backs ruleModel.Prerequisites,
+// which is embedded in a rule that's always replaced wholesale, so there is
+// no separate "leave unmanaged" state to preserve at this level.
+func prerequisitesToAPI(prereqs []prerequisiteModel) []growthbook.FeaturePrerequisite {
+	if prereqs == nil {
+		return nil
+	}
+	out := make([]growthbook.FeaturePrerequisite, 0, len(prereqs))
+	for _, p := range prereqs {
+		out = append(out, growthbook.FeaturePrerequisite{
+			ID:        p.ID.ValueString(),
+			Condition: p.Condition.ValueString(),
+		})
+	}
+	return out
+}
+
+func prerequisitesFromAPI(prereqs []growthbook.FeaturePrerequisite) []prerequisiteModel {
+	if prereqs == nil {
+		return nil
+	}
+	out := make([]prerequisiteModel, 0, len(prereqs))
+	for _, p := range prereqs {
+		out = append(out, prerequisiteModel{
+			ID:        types.StringValue(p.ID),
+			Condition: types.StringValue(p.Condition),
+		})
+	}
+	return out
+}
+
+// featurePrerequisitesToAPI converts the plan's feature-level prerequisites
+// list into the API's clear-vs-leave pointer form, the same convention as
+// rulesToAPI: nil means the plan omitted prerequisites entirely (leave
+// unmanaged), a non-nil pointer to an empty slice clears them.
+func featurePrerequisitesToAPI(prereqs []prerequisiteModel) *[]growthbook.FeaturePrerequisite {
+	if prereqs == nil {
+		return nil
+	}
+	out := prerequisitesToAPI(prereqs)
+	if out == nil {
+		out = []growthbook.FeaturePrerequisite{}
+	}
+	return &out
+}
+
 // ruleToAPI converts one Terraform rule model into the wire representation.
 func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growthbook.FeatureRule {
 	condition := ""
@@ -116,6 +174,7 @@ func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growth
 		out.Coverage = &v
 	}
 	out.Environments = stringSetToSlice(ctx, r.Environments, diags)
+	out.Prerequisites = prerequisitesToAPI(r.Prerequisites)
 	for _, sg := range r.SavedGroups {
 		out.SavedGroups = append(out.SavedGroups, growthbook.FeatureSavedGroupTargeting{
 			Match: sg.Match.ValueString(),
@@ -139,6 +198,7 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		Condition:       optionalString(r.Condition),
 		AllEnvironments: types.BoolValue(r.AllEnvironments),
 		Environments:    stringSetValue(ctx, r.Environments, diags),
+		Prerequisites:   prerequisitesFromAPI(r.Prerequisites),
 		Value:           optionalString(r.Value),
 		HashAttribute:   optionalString(r.HashAttribute),
 		ExperimentID:    optionalString(r.ExperimentID),
@@ -242,6 +302,7 @@ func featureModelFromAPI(ctx context.Context, f *growthbook.Feature, diags *diag
 		Tags:            stringSetValue(ctx, f.Tags, diags),
 		Environments:    environmentsFromAPI(f.Environments),
 		Rules:           rulesFromAPI(ctx, f.Rules, diags),
+		Prerequisites:   prerequisitesFromAPI(f.Prerequisites),
 		DateCreated:     types.StringValue(f.DateCreated),
 		DateUpdated:     types.StringValue(f.DateUpdated),
 		RevisionVersion: types.Int64Null(),
@@ -255,12 +316,13 @@ func featureModelFromAPI(ctx context.Context, f *growthbook.Feature, diags *diag
 // featureCreateRequest builds the create request body from the plan model.
 func featureCreateRequest(ctx context.Context, m featureModel, diags *diag.Diagnostics) growthbook.FeatureRequest {
 	req := growthbook.FeatureRequest{
-		ID:           m.ID.ValueString(),
-		ValueType:    m.ValueType.ValueString(),
-		DefaultValue: m.DefaultValue.ValueString(),
-		Tags:         stringSetToSlice(ctx, m.Tags, diags),
-		Environments: environmentsToAPI(m.Environments),
-		Rules:        rulesToAPI(ctx, m.Rules, diags),
+		ID:            m.ID.ValueString(),
+		ValueType:     m.ValueType.ValueString(),
+		DefaultValue:  m.DefaultValue.ValueString(),
+		Tags:          stringSetToSlice(ctx, m.Tags, diags),
+		Environments:  environmentsToAPI(m.Environments),
+		Rules:         rulesToAPI(ctx, m.Rules, diags),
+		Prerequisites: featurePrerequisitesToAPI(m.Prerequisites),
 	}
 	if !m.Description.IsNull() && !m.Description.IsUnknown() {
 		v := m.Description.ValueString()

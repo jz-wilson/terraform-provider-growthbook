@@ -6,6 +6,7 @@ FEATURES:
 
 * **New Resource:** `growthbook_attribute`
 * **New Data Source:** `growthbook_attribute`
+* **`growthbook_feature`:** Add feature-level `prerequisites` (a set of feature IDs) and rule-level `prerequisites` (`id`, `condition`), gating a feature or a rule on another feature's value. Rule-level prerequisites require GrowthBook Enterprise.
 
 ## 0.1.0 (September 18, 2026)
 

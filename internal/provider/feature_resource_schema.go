@@ -26,6 +26,30 @@ func stringOneOf(values []string) validator.String {
 	return stringvalidator.OneOf(values...)
 }
 
+// prerequisiteSchema is the `prerequisites` list attribute shared by a
+// feature and each of its rules: each entry gates on another feature's
+// value via a JSON condition.
+func prerequisiteSchema() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Optional:            true,
+		MarkdownDescription: "Gates evaluation on another feature's value. Omit to leave unmanaged; set to `[]` to clear.",
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"id": schema.StringAttribute{
+					Required:            true,
+					MarkdownDescription: "The parent feature's key.",
+				},
+				"condition": schema.StringAttribute{
+					Required:            true,
+					MarkdownDescription: "JSON condition evaluated against the parent feature's value, e.g. `{\"value\": true}`. Whitespace/property-order differences are ignored.",
+					Validators:          []validator.String{jsonStringValidator{}},
+					PlanModifiers:       []planmodifier.String{jsonNormalizePlanModifier{}},
+				},
+			},
+		},
+	}
+}
+
 func featureRuleSchema() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
 		Optional:            true,
@@ -61,6 +85,7 @@ func featureRuleSchema() schema.ListNestedAttribute {
 						},
 					},
 				},
+				"prerequisites": prerequisiteSchema(),
 				"all_environments": schema.BoolAttribute{
 					Optional: true,
 					Computed: true,
@@ -142,6 +167,7 @@ func (r *featureResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"environments":     featureEnvironmentSchema(),
 			"rules":            featureRuleSchema(),
+			"prerequisites":    prerequisiteSchema(),
 			"revision_version": schema.Int64Attribute{Computed: true},
 			"date_created":     schema.StringAttribute{Computed: true},
 			"date_updated":     schema.StringAttribute{Computed: true},

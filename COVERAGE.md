@@ -46,6 +46,7 @@ Sources: the GrowthBook OpenAPI spec (`/v1/projects`, `/v1/environments`, `/v1/s
 | `archived` | `archived` | yes | Defaults to `false` in the schema, matching GrowthBook's default. |
 | `environments` (request: `{enabled}` map; response: `FeatureEnvironmentV2`, richer per-env object) | `environments` (map of `{enabled}`) | yes | Only `enabled` is modeled per environment; the response's richer per-environment object (compiled SDK payload/definition) is not surfaced - see Not yet modelled. |
 | `rules` | `rules` | yes | See rule-level table below; only a subset of rule types and rule fields are modeled. |
+| `prerequisites` (feature-level, `{id, condition}`) | `prerequisites` (`id`, `condition`) | yes | Gates the feature on another feature's value. `condition` is a JSON string normalized the same way as `rules[].condition`. |
 | `dateCreated` | `date_created` | computed-only | Response-only. |
 | `dateUpdated` | `date_updated` | computed-only | Response-only. |
 | `revision` (full `FeatureRevisionSummary`/`FeatureRevisionV2` object: id, featureId, baseVersion, version, comment, date, status, createdBy, publishedBy, reviews, scheduled-publish fields, rampActions, metadata, etc.) | `revision_version` | computed-only | Only `revision.version` is surfaced, as an integer; every other revision/draft field is unmodeled. See Not yet modelled. |
@@ -53,7 +54,6 @@ Sources: the GrowthBook OpenAPI spec (`/v1/projects`, `/v1/environments`, `/v1/s
 | `targetingProjects` | `n/a` | no | Out of scope for 0.1; secondary-project targeting is not modeled at all. |
 | `baseConfig` | `n/a` | no | "Config mode" (JSON features backed by a shared config resource) is not modeled; out of scope for 0.1. |
 | `defaultValueConfig` | `n/a` | no | Part of Config mode; not modeled, same reason as `baseConfig`. |
-| `prerequisites` (feature-level) | `n/a` | no | Feature-level prerequisite gating is not modeled; out of scope for 0.1. |
 | `customFields` | `n/a` | no | Org-defined custom metadata map; not modeled, out of scope for 0.1. |
 | `jsonSchema` | `n/a` | no | Enterprise-only JSON Schema validation for `json`-type feature values; not modeled, premium-tier gating and out of scope for 0.1. |
 | `holdout` | `n/a` | no | Holdout-experiment assignment; not modeled, out of scope for 0.1. |
@@ -81,12 +81,12 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 | `experimentId` | `rules[].experiment_id` | yes | Applies to `experiment-ref` only. |
 | `variations[].value` | `rules[].variations[].value` | yes | Applies to `experiment-ref` only. |
 | `variations[].variationId` | `rules[].variations[].variation_id` | yes | |
+| `prerequisites` (rule-level, `{id, condition}`) | `rules[].prerequisites[]` (`id`, `condition`) | yes | Gates the rule on another feature's value; a plain (non-pointer) list, since rules are always replaced wholesale on update. |
 | `variations[].config` | `n/a` | no | Config-mode override pointer on an `experiment-ref` variation; not modeled, same Config-mode reason as `baseConfig` above. |
 | `config` | `n/a` | no | Config-mode override pointer on `force`/`rollout`; not modeled. |
 | `sparse` | `n/a` | no | JSON-only partial-merge semantics for `force`/`rollout`/`experiment-ref` values; not modeled, out of scope for 0.1. |
 | `seed` | `n/a` | no | Hash seed override for `rollout` (defaults to rule id); not modeled, out of scope for 0.1. |
 | `hashVersion` | `n/a` | no | Hash algorithm version (1 or 2) for `rollout`; not modeled, out of scope for 0.1. |
-| `prerequisites` (rule-level, `{id, condition}`) | `n/a` | no | Rule-level prerequisite gating; not modeled, out of scope for 0.1. |
 | `scheduleRules` | `n/a` | no | Per-rule on/off timestamps; part of the scheduled-rollout workflow, not modeled. |
 | `scheduleType` | `n/a` | no | UI hint for scheduling mode (`none`/`schedule`/`ramp`); not modeled, tied to `scheduleRules`/ramp schedules above. |
 | `rampScheduleId` | `n/a` | no | Link to a multi-step ramp-schedule sub-resource; not modeled, out of scope for 0.1. |
@@ -140,7 +140,6 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 
 - **Feature-level secondary-project targeting** (`targetingAllProjects`, `targetingProjects`) - a feature can be served to projects beyond its primary `project`; would need two new attributes on `growthbook_feature` plus request/response wiring.
 - **Config mode** (`baseConfig`, `defaultValueConfig`, and the per-value `config` pointer on rules/variations) - JSON features backed by a shared, versioned config resource with override patches; a substantial feature area with its own `/configs` API surface not touched by this provider at all.
-- **Feature-level and rule-level prerequisites** - features/rules that only evaluate when another feature flag evaluates to a required value; needs its own nested attribute (`{id, condition}`) at both levels.
 - **Scheduled rollout rules** (`scheduleRules`, `scheduleType`) - per-rule timestamp-based on/off scheduling; not modeled on `rules[]`.
 - **Ramp schedules** (`rampScheduleId`, `pendingRamp`, and the `rampActions` sub-resource on feature revisions) - multi-step gradual rollout scheduling; a separate sub-resource this provider does not expose.
 - **Safe-rollout rules** (rule type `safe-rollout`, with `controlValue`, `variationValue`, `guardrailMetricIds`, `maxDuration`, `autoRollback`, `rampUpSchedule`, etc.) - an entire rule type built on the datasource/metrics system, not modeled.

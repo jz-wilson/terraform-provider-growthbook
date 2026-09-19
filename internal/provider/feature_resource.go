@@ -54,6 +54,7 @@ func (r *featureResource) Create(ctx context.Context, req resource.CreateRequest
 
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
+	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -85,6 +86,22 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if state.Environments == nil && len(newState.Environments) == 0 {
 		newState.Environments = nil
 	}
+	if state.Prerequisites == nil && len(newState.Prerequisites) == 0 {
+		newState.Prerequisites = nil
+	} else if state.Prerequisites != nil && newState.Prerequisites == nil {
+		// state.Prerequisites was declared (possibly []); the API omits an
+		// empty prerequisites array the same way it omits an absent one, so
+		// preserve "declared but empty" instead of flipping it to null.
+		newState.Prerequisites = []prerequisiteModel{}
+	}
+	for i := range newState.Rules {
+		if i >= len(state.Rules) {
+			break
+		}
+		if state.Rules[i].Prerequisites != nil && newState.Rules[i].Prerequisites == nil {
+			newState.Rules[i].Prerequisites = []prerequisiteModel{}
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newState)...)
 }
 
@@ -108,7 +125,30 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
+	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// reconcilePrerequisites forces a declared-but-now-empty prerequisites list
+// (feature-level or on a rule) to encode as [] rather than null in the
+// returned state. GrowthBook's response omits an empty prerequisites array
+// the same way an absent one is omitted, so a plan that explicitly cleared
+// prerequisites (config sets [] rather than leaving the attribute unset)
+// would otherwise read back as null and produce "inconsistent result after
+// apply", since [] and null are distinct values for this Optional,
+// non-Computed attribute.
+func reconcilePrerequisites(state *featureModel, plan featureModel) {
+	if plan.Prerequisites != nil && state.Prerequisites == nil {
+		state.Prerequisites = []prerequisiteModel{}
+	}
+	for i := range state.Rules {
+		if i >= len(plan.Rules) {
+			break
+		}
+		if plan.Rules[i].Prerequisites != nil && state.Rules[i].Prerequisites == nil {
+			state.Rules[i].Prerequisites = []prerequisiteModel{}
+		}
+	}
 }
 
 // echoUnmanagedCollections keeps rules/environments null in the returned
@@ -123,6 +163,9 @@ func echoUnmanagedCollections(state *featureModel, plan featureModel) {
 	}
 	if plan.Environments == nil {
 		state.Environments = nil
+	}
+	if plan.Prerequisites == nil {
+		state.Prerequisites = nil
 	}
 }
 

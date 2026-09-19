@@ -76,6 +76,15 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 								},
 							},
 						},
+						"prerequisites": schema.ListNestedAttribute{
+							Computed: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"id":        schema.StringAttribute{Computed: true},
+									"condition": schema.StringAttribute{Computed: true},
+								},
+							},
+						},
 						"all_environments": schema.BoolAttribute{Computed: true},
 						"environments": schema.SetAttribute{
 							Computed:    true,
@@ -95,6 +104,15 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 							},
 						},
 						"rule_id": schema.StringAttribute{Computed: true},
+					},
+				},
+			},
+			"prerequisites": schema.ListNestedAttribute{
+				Computed: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id":        schema.StringAttribute{Computed: true},
+						"condition": schema.StringAttribute{Computed: true},
 					},
 				},
 			},

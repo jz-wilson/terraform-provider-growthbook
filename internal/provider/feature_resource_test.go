@@ -113,6 +113,9 @@ func applyFeatureRequest(feature *growthbook.Feature, req growthbook.FeatureRequ
 		}
 		feature.Rules = rules
 	}
+	if req.Prerequisites != nil {
+		feature.Prerequisites = *req.Prerequisites
+	}
 }
 
 func (f *fakeFeatureServer) handleItem(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +301,163 @@ resource "growthbook_feature" "test" {
     },
   ]
 }`,
+			},
+		},
+	})
+}
+
+// TestAccFeatureResource_prerequisites drives a fake GrowthBook server
+// through adding feature-level and rule-level prerequisites, changing a
+// condition, and then removing them, asserting each step converges to an
+// empty plan and that removal actually clears the server-side value rather
+// than leaving it behind.
+func TestAccFeatureResource_prerequisites(t *testing.T) {
+	server, _ := newFakeFeatureServer()
+	defer server.Close()
+
+	t.Setenv("TF_ACC", "1")
+	t.Setenv("GROWTHBOOK_API_KEY", "secret_test")
+	t.Setenv("GROWTHBOOK_API_URL", server.URL)
+
+	parent := `
+resource "growthbook_feature" "parent" {
+  id            = "ft_prereq_parent"
+  value_type    = "boolean"
+  default_value = "false"
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fakeAPIProviderConfig() + parent + `
+resource "growthbook_feature" "child" {
+  id            = "ft_prereq_child"
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = [
+    {
+      id        = growthbook_feature.parent.id
+      condition = jsonencode({ value = true })
+    },
+  ]
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = true })
+        },
+      ]
+    },
+  ]
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.id", "ft_prereq_parent"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":true}`),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "1"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Change the condition.
+				Config: fakeAPIProviderConfig() + parent + `
+resource "growthbook_feature" "child" {
+  id            = "ft_prereq_child"
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = [
+    {
+      id        = growthbook_feature.parent.id
+      condition = jsonencode({ value = false })
+    },
+  ]
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = false })
+        },
+      ]
+    },
+  ]
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":false}`),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":false}`),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Remove all prerequisites: the empty lists must clear the
+				// server-side values, not leave them behind.
+				Config: fakeAPIProviderConfig() + parent + `
+resource "growthbook_feature" "child" {
+  id            = "ft_prereq_child"
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites    = []
+    },
+  ]
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "0"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "0"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				ResourceName:      "growthbook_feature.child",
+				ImportState:       true,
+				ImportStateVerify: true,
+				Config: fakeAPIProviderConfig() + parent + `
+resource "growthbook_feature" "child" {
+  id            = "ft_prereq_child"
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites    = []
+    },
+  ]
+}
+`,
 			},
 		},
 	})

@@ -156,3 +156,160 @@ resource "growthbook_feature" "test" {
 		},
 	})
 }
+
+// TestAccFeatureResource_prerequisitesLive exercises feature-level and
+// rule-level prerequisites against a real GrowthBook instance: add, change
+// a condition, then remove them, asserting the removal actually clears the
+// server-side value after a refresh rather than leaving it behind.
+func TestAccFeatureResource_prerequisitesLive(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") == "" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	parentKey := acctest.RandomWithPrefix("tf-acc-")
+	childKey := acctest.RandomWithPrefix("tf-acc-")
+
+	parentConfig := fmt.Sprintf(`
+resource "growthbook_feature" "parent" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+}
+`, parentKey)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = [
+    {
+      id        = growthbook_feature.parent.id
+      condition = jsonencode({ value = true })
+    },
+  ]
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = true })
+        },
+      ]
+    },
+  ]
+}
+`, childKey),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.id", parentKey),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":true}`),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "1"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Change the condition.
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = [
+    {
+      id        = growthbook_feature.parent.id
+      condition = jsonencode({ value = false })
+    },
+  ]
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = false })
+        },
+      ]
+    },
+  ]
+}
+`, childKey),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.0.condition", `{"value":false}`),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":false}`),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				// Remove all prerequisites: assert they are actually gone
+				// after a refresh, not merely absent from this apply's plan.
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites    = []
+    },
+  ]
+}
+`, childKey),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "0"),
+					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "0"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				ResourceName:      "growthbook_feature.child",
+				ImportState:       true,
+				ImportStateVerify: true,
+				Config: parentConfig + fmt.Sprintf(`
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  prerequisites = []
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      prerequisites    = []
+    },
+  ]
+}
+`, childKey),
+			},
+		},
+	})
+}
