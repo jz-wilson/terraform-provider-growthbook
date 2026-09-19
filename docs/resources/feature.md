@@ -59,6 +59,15 @@ resource "growthbook_feature" "checkout_redesign" {
       hash_attribute = "id"
       value          = "true"
       environments   = ["staging"]
+
+      # schedule_rules is a simple time-based on/off schedule; it requires
+      # GrowthBook Pro. Like rules[].prerequisites, it is unmanaged unless
+      # set here, and set to [] to explicitly clear it.
+      schedule_type = "schedule"
+      schedule_rules = [
+        { enabled = true, timestamp = "2026-06-01T00:00:00Z" },
+        { enabled = false, timestamp = null },
+      ]
     },
     {
       type          = "experiment-ref"
@@ -126,6 +135,8 @@ Optional:
 - `hash_attribute` (String)
 - `prerequisites` (Attributes List) Gates the rule on another feature's value. Omit to leave unmanaged; set to `[]` to clear. Requires GrowthBook Enterprise (the "prerequisite-targeting" commercial feature); on other plans GrowthBook silently drops it and the provider reports an error rather than let state drift. (see [below for nested schema](#nestedatt--rules--prerequisites))
 - `saved_groups` (Attributes List) (see [below for nested schema](#nestedatt--rules--saved_groups))
+- `schedule_rules` (Attributes List) Time-based on/off schedule for this rule. Omit to leave unmanaged; set to `[]` to clear. Requires GrowthBook Pro, same as `schedule_type`. (see [below for nested schema](#nestedatt--rules--schedule_rules))
+- `schedule_type` (String) Simple on/off scheduling mode: `none` or `schedule`. Set to `schedule` when `schedule_rules` is configured. Requires GrowthBook Pro (the "schedule-feature-flag" commercial feature); on other plans GrowthBook silently drops `schedule_rules` and the provider reports an error rather than let state drift.
 - `value` (String)
 - `variations` (Attributes List) (see [below for nested schema](#nestedatt--rules--variations))
 
@@ -149,6 +160,18 @@ Required:
 
 - `ids` (Set of String)
 - `match` (String)
+
+
+<a id="nestedatt--rules--schedule_rules"></a>
+### Nested Schema for `rules.schedule_rules`
+
+Required:
+
+- `enabled` (Boolean) Whether the rule is enabled or disabled once this transition activates.
+
+Optional:
+
+- `timestamp` (String) RFC3339 timestamp when this transition activates. Omit for an open-ended transition.
 
 
 <a id="nestedatt--rules--variations"></a>

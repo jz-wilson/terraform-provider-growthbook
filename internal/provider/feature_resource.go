@@ -66,6 +66,30 @@ func (r *featureResource) Create(ctx context.Context, req resource.CreateRequest
 	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+	resp.Diagnostics.Append(requireScheduleRulesPersisted(plan, feature)...)
+}
+
+// requireScheduleRulesPersisted reports a clear error when GrowthBook
+// silently drops a rule's schedule_rules instead of storing them, which
+// happens on any plan below Pro (the license gates "schedule-feature-flag"
+// and a sub-Pro org's write succeeds but the value never lands). Without
+// this check, the Plugin Framework instead reports a confusing "element 0
+// has vanished" consistency error.
+func requireScheduleRulesPersisted(plan featureModel, feature *growthbook.Feature) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for i, r := range plan.Rules {
+		if len(r.ScheduleRules) == 0 {
+			continue
+		}
+		if i >= len(feature.Rules) || len(feature.Rules[i].ScheduleRules) == 0 {
+			diags.AddError(
+				"GrowthBook did not store rule scheduling",
+				fmt.Sprintf("GrowthBook did not store rules[%d].schedule_rules. Rule scheduling "+
+					"requires a GrowthBook Pro plan (commercial feature \"schedule-feature-flag\").", i),
+			)
+		}
+	}
+	return diags
 }
 
 // requireRulePrerequisitesPersisted reports a clear error when GrowthBook
@@ -146,6 +170,9 @@ func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, re
 		if state.Rules[i].Prerequisites != nil && newState.Rules[i].Prerequisites == nil {
 			newState.Rules[i].Prerequisites = []prerequisiteModel{}
 		}
+		if state.Rules[i].ScheduleRules != nil && newState.Rules[i].ScheduleRules == nil {
+			newState.Rules[i].ScheduleRules = []scheduleRuleModel{}
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newState)...)
 }
@@ -176,6 +203,7 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+	resp.Diagnostics.Append(requireScheduleRulesPersisted(plan, feature)...)
 }
 
 // reconcilePrerequisites forces a declared-but-now-empty prerequisites list
@@ -196,6 +224,9 @@ func reconcilePrerequisites(state *featureModel, plan featureModel) {
 		}
 		if plan.Rules[i].Prerequisites != nil && state.Rules[i].Prerequisites == nil {
 			state.Rules[i].Prerequisites = []prerequisiteModel{}
+		}
+		if plan.Rules[i].ScheduleRules != nil && state.Rules[i].ScheduleRules == nil {
+			state.Rules[i].ScheduleRules = []scheduleRuleModel{}
 		}
 	}
 }

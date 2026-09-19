@@ -22,6 +22,8 @@ var featureValueTypes = []string{"boolean", "string", "number", "json"}
 
 var featureRuleTypes = []string{"force", "rollout", "experiment-ref"}
 
+var featureRuleScheduleTypes = []string{"none", "schedule"}
+
 func stringOneOf(values []string) validator.String {
 	return stringvalidator.OneOf(values...)
 }
@@ -124,6 +126,30 @@ func featureRuleSchema() schema.ListNestedAttribute {
 				"rule_id": schema.StringAttribute{
 					Computed:            true,
 					MarkdownDescription: "Server-assigned rule identifier.",
+				},
+				"schedule_type": schema.StringAttribute{
+					Optional: true,
+					MarkdownDescription: "Simple on/off scheduling mode: `none` or `schedule`. Set to `schedule` when `schedule_rules` " +
+						"is configured. Requires GrowthBook Pro (the \"schedule-feature-flag\" commercial feature); on other plans " +
+						"GrowthBook silently drops `schedule_rules` and the provider reports an error rather than let state drift.",
+					Validators: []validator.String{stringOneOf(featureRuleScheduleTypes)},
+				},
+				"schedule_rules": schema.ListNestedAttribute{
+					Optional: true,
+					MarkdownDescription: "Time-based on/off schedule for this rule. Omit to leave unmanaged; set to `[]` to clear. " +
+						"Requires GrowthBook Pro, same as `schedule_type`.",
+					NestedObject: schema.NestedAttributeObject{
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								Required:            true,
+								MarkdownDescription: "Whether the rule is enabled or disabled once this transition activates.",
+							},
+							"timestamp": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "RFC3339 timestamp when this transition activates. Omit for an open-ended transition.",
+							},
+						},
+					},
 				},
 			},
 		},

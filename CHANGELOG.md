@@ -9,6 +9,7 @@ FEATURES:
 * **New Resource:** `growthbook_saved_group`
 * **New Data Source:** `growthbook_saved_group`
 * resource/growthbook_feature: Add feature-level `prerequisites` (a set of feature IDs that must evaluate to `true`) and rule-level `rules.prerequisites` (`id`, `condition`). Rule-level prerequisites require GrowthBook Enterprise; on other plans GrowthBook drops them and the provider reports an error.
+* resource/growthbook_feature: Add rule-level `rules.schedule_type` and `rules.schedule_rules` (`enabled`, `timestamp`) for simple time-based on/off scheduling. Requires GrowthBook Pro; on lower plans GrowthBook drops `schedule_rules` and the provider reports an error.
 
 BUG FIXES:
 

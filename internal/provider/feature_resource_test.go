@@ -34,6 +34,10 @@ type fakeFeatureServer struct {
 	// GrowthBook's real behavior on a sub-Enterprise plan (see
 	// requireRulePrerequisitesPersisted).
 	denyRulePrerequisites bool
+	// denyScheduleRules, when set, silently strips a rule's schedule_rules
+	// from every write instead of storing them, mirroring GrowthBook's real
+	// behavior on a sub-Pro plan (see requireScheduleRulesPersisted).
+	denyScheduleRules bool
 }
 
 func newFakeFeatureServer() (*httptest.Server, *fakeFeatureServer) {
@@ -119,6 +123,9 @@ func (f *fakeFeatureServer) applyFeatureRequest(feature *growthbook.Feature, req
 			}
 			if f.denyRulePrerequisites {
 				rules[i].Prerequisites = nil
+			}
+			if f.denyScheduleRules {
+				rules[i].ScheduleRules = nil
 			}
 		}
 		feature.Rules = rules

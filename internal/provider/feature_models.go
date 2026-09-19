@@ -36,6 +36,13 @@ type prerequisiteModel struct {
 	Condition types.String `tfsdk:"condition"`
 }
 
+// scheduleRuleModel is one on/off transition in a rule's schedule. A null
+// Timestamp is an open-ended transition.
+type scheduleRuleModel struct {
+	Enabled   types.Bool   `tfsdk:"enabled"`
+	Timestamp types.String `tfsdk:"timestamp"`
+}
+
 // ruleModel is one entry of a feature's ordered rules list.
 type ruleModel struct {
 	Type            types.String        `tfsdk:"type"`
@@ -52,6 +59,8 @@ type ruleModel struct {
 	ExperimentID    types.String        `tfsdk:"experiment_id"`
 	Variations      []variationModel    `tfsdk:"variations"`
 	RuleID          types.String        `tfsdk:"rule_id"`
+	ScheduleType    types.String        `tfsdk:"schedule_type"`
+	ScheduleRules   []scheduleRuleModel `tfsdk:"schedule_rules"`
 }
 
 // environmentModel is one entry of a feature's environments map.
@@ -168,6 +177,45 @@ func featurePrerequisitesToAPI(ctx context.Context, set types.Set, diags *diag.D
 	return &out
 }
 
+// scheduleRulesToAPI converts a rule's schedule_rules list into the wire
+// representation. Like prerequisitesToAPI, this is a plain (possibly nil)
+// slice: it backs ruleModel.ScheduleRules, embedded in a rule that's always
+// replaced wholesale on update.
+func scheduleRulesToAPI(rules []scheduleRuleModel) []growthbook.ScheduleRule {
+	if rules == nil {
+		return nil
+	}
+	out := make([]growthbook.ScheduleRule, 0, len(rules))
+	for _, sr := range rules {
+		var ts *string
+		if !sr.Timestamp.IsNull() && !sr.Timestamp.IsUnknown() {
+			v := sr.Timestamp.ValueString()
+			ts = &v
+		}
+		out = append(out, growthbook.ScheduleRule{Enabled: sr.Enabled.ValueBool(), Timestamp: ts})
+	}
+	return out
+}
+
+func scheduleRulesFromAPI(rules []growthbook.ScheduleRule) []scheduleRuleModel {
+	// Same normalization as prerequisitesFromAPI: treat an empty response
+	// array as absent so an unconfigured attribute reads back as null.
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]scheduleRuleModel, 0, len(rules))
+	for _, sr := range rules {
+		m := scheduleRuleModel{Enabled: types.BoolValue(sr.Enabled)}
+		if sr.Timestamp != nil {
+			m.Timestamp = types.StringValue(*sr.Timestamp)
+		} else {
+			m.Timestamp = types.StringNull()
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
 // ruleToAPI converts one Terraform rule model into the wire representation.
 func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growthbook.FeatureRule {
 	condition := ""
@@ -193,6 +241,8 @@ func ruleToAPI(ctx context.Context, r ruleModel, diags *diag.Diagnostics) growth
 	}
 	out.Environments = stringSetToSlice(ctx, r.Environments, diags)
 	out.Prerequisites = prerequisitesToAPI(r.Prerequisites)
+	out.ScheduleType = r.ScheduleType.ValueString()
+	out.ScheduleRules = scheduleRulesToAPI(r.ScheduleRules)
 	for _, sg := range r.SavedGroups {
 		out.SavedGroups = append(out.SavedGroups, growthbook.FeatureSavedGroupTargeting{
 			Match: sg.Match.ValueString(),
@@ -221,6 +271,8 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		HashAttribute:   optionalString(r.HashAttribute),
 		ExperimentID:    optionalString(r.ExperimentID),
 		RuleID:          types.StringValue(r.ID),
+		ScheduleType:    optionalString(r.ScheduleType),
+		ScheduleRules:   scheduleRulesFromAPI(r.ScheduleRules),
 	}
 	// enabled is Optional+Computed with a default of true, matching
 	// GrowthBook's own default for a rule that doesn't specify it.

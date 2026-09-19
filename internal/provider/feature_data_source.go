@@ -103,7 +103,17 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 								},
 							},
 						},
-						"rule_id": schema.StringAttribute{Computed: true},
+						"rule_id":       schema.StringAttribute{Computed: true},
+						"schedule_type": schema.StringAttribute{Computed: true},
+						"schedule_rules": schema.ListNestedAttribute{
+							Computed: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"enabled":   schema.BoolAttribute{Computed: true},
+									"timestamp": schema.StringAttribute{Computed: true},
+								},
+							},
+						},
 					},
 				},
 			},
