@@ -73,7 +73,7 @@ func (r *SavedGroupResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"attribute_key": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Attribute key the group's list of values is based on. Required when `type = \"list\"`, and rejected when `type = \"condition\"`. Immutable after creation.",
+				MarkdownDescription: "Attribute key the group's list of values is based on. Required when `type = \"list\"`, and rejected when `type = \"condition\"`. Immutable after creation. Must reference an attribute that already exists in the organization (see `growthbook_attribute`); the API returns HTTP 400 (\"Unknown attributeKey\") otherwise.",
 				Validators: []validator.String{
 					stringvalidator.ConflictsWith(path.MatchRoot("condition")),
 				},

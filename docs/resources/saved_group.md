@@ -13,6 +13,9 @@ Manages a GrowthBook saved group, a reusable list of attribute values or a condi
 ## Example Usage
 
 ```terraform
+# attribute_key must reference an attribute that already exists in the
+# organization (see growthbook_attribute); a fresh organization with no
+# attributes defined would need one created first.
 resource "growthbook_saved_group" "beta_users" {
   name          = "Beta Users"
   type          = "list"
@@ -37,7 +40,7 @@ resource "growthbook_saved_group" "us_visitors" {
 
 ### Optional
 
-- `attribute_key` (String) Attribute key the group's list of values is based on. Required when `type = "list"`, and rejected when `type = "condition"`. Immutable after creation.
+- `attribute_key` (String) Attribute key the group's list of values is based on. Required when `type = "list"`, and rejected when `type = "condition"`. Immutable after creation. Must reference an attribute that already exists in the organization (see `growthbook_attribute`); the API returns HTTP 400 ("Unknown attributeKey") otherwise.
 - `condition` (String) JSON-encoded condition for the group. Required when `type = "condition"`, and rejected when `type = "list"`.
 - `owner` (String) The userId or email address of the owner. Defaults to the user associated with the request's Personal Access Token when omitted.
 - `projects` (Set of String) Project ids this saved group is scoped to. Omit to leave unchanged; set to `[]` to clear (all projects).

@@ -32,7 +32,7 @@ output "beta_users_values" {
 ### Read-Only
 
 - `archived` (Boolean) Whether the saved group is archived.
-- `attribute_key` (String) Attribute key the group's list of values is based on, when `type = "list"`.
+- `attribute_key` (String) Attribute key the group's list of values is based on, when `type = "list"`. References an attribute defined in the organization (see `growthbook_attribute`).
 - `condition` (String) JSON-encoded condition for the group, when `type = "condition"`.
 - `date_created` (String) RFC3339 timestamp the saved group was created.
 - `date_updated` (String) RFC3339 timestamp the saved group was last updated.

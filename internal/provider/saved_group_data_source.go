@@ -52,7 +52,7 @@ func (d *SavedGroupDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			},
 			"attribute_key": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Attribute key the group's list of values is based on, when `type = \"list\"`.",
+				MarkdownDescription: "Attribute key the group's list of values is based on, when `type = \"list\"`. References an attribute defined in the organization (see `growthbook_attribute`).",
 			},
 			"values": schema.SetAttribute{
 				Computed:            true,

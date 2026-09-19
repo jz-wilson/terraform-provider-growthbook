@@ -144,7 +144,7 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 | `name` | `name` | yes | |
 | `type` | `type` | yes | `condition` or `list`. Immutable after creation: the update request schema (`additionalProperties: false`) does not accept `type` at all, so the provider only sends it on create. |
 | `condition` | `condition` | yes | Applies when `type = "condition"`. |
-| `attributeKey` | `attribute_key` | yes | Applies when `type = "list"`. Immutable after creation, same reason as `type`: absent from the update request schema. |
+| `attributeKey` | `attribute_key` | yes | Applies when `type = "list"`. Immutable after creation, same reason as `type`: absent from the update request schema. Must reference an attribute that already exists in the organization (see `growthbook_attribute`); the API returns HTTP 400 ("Unknown attributeKey") for an attribute that doesn't exist yet. |
 | `values` | `values` | yes | Applies when `type = "list"`. `*[]string` on the client: a nil pointer (unconfigured attribute) omits the field and leaves the server value unchanged; a pointer to an empty slice (`values = []`) sends `[]` and clears it. |
 | `owner` | `owner` | yes | Optional+computed: defaults to the PAT-associated user when omitted on create. |
 | `ownerEmail` | `owner_email` | computed-only | Response-only, resolved from `owner` when possible. |
