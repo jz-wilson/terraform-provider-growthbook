@@ -274,15 +274,36 @@ func attributeRequestFromModel(ctx context.Context, m AttributeResourceModel, in
 		apiReq.Format = &v
 	}
 
-	if !m.Projects.IsNull() && !m.Projects.IsUnknown() {
-		var projects []string
-		diags.Append(m.Projects.ElementsAs(ctx, &projects, false)...)
-		apiReq.Projects = &projects
+	// projects/tags are Optional-only (not Computed): null means "no
+	// projects/tags", not "leave unconfigured". On Create that's the same
+	// thing as omitting the field. On Update it is not: GrowthBook has no
+	// other signal for "clear the list", so a null plan must still send an
+	// explicit empty list, or removing the last configured value from a
+	// list would never reach the API and the resource would drift forever.
+	isUpdate := !includeProperty
+	if !m.Projects.IsUnknown() {
+		if m.Projects.IsNull() {
+			if isUpdate {
+				empty := []string{}
+				apiReq.Projects = &empty
+			}
+		} else {
+			var projects []string
+			diags.Append(m.Projects.ElementsAs(ctx, &projects, false)...)
+			apiReq.Projects = &projects
+		}
 	}
-	if !m.Tags.IsNull() && !m.Tags.IsUnknown() {
-		var tags []string
-		diags.Append(m.Tags.ElementsAs(ctx, &tags, false)...)
-		apiReq.Tags = &tags
+	if !m.Tags.IsUnknown() {
+		if m.Tags.IsNull() {
+			if isUpdate {
+				empty := []string{}
+				apiReq.Tags = &empty
+			}
+		} else {
+			var tags []string
+			diags.Append(m.Tags.ElementsAs(ctx, &tags, false)...)
+			apiReq.Tags = &tags
+		}
 	}
 
 	return apiReq, diags

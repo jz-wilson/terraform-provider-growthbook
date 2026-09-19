@@ -58,6 +58,43 @@ resource "growthbook_attribute" "test" {
 				},
 			},
 			{
+				// Configure tags, then remove them in the next step to
+				// prove GrowthBook's real clear semantics: a null plan
+				// value (tags is Optional-only, not Computed) must send an
+				// explicit "[]", not omit the field, or the attribute would
+				// keep its old tags and drift forever. projects follows the
+				// identical code path in attributeRequestFromModel, so this
+				// covers both without needing a second real project id to
+				// exist on this organization.
+				Config: fmt.Sprintf(`
+resource "growthbook_attribute" "test" {
+  property    = %q
+  datatype    = "enum"
+  enum        = "a,b,c"
+  description = "updated by acceptance test"
+  tags        = ["tf-acc"]
+}
+`, property),
+				Check: resource.TestCheckResourceAttr("growthbook_attribute.test", "tags.#", "1"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
+				Config: fmt.Sprintf(`
+resource "growthbook_attribute" "test" {
+  property    = %q
+  datatype    = "enum"
+  enum        = "a,b,c"
+  description = "updated by acceptance test"
+}
+`, property),
+				Check: resource.TestCheckNoResourceAttr("growthbook_attribute.test", "tags"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
 				ResourceName:                         "growthbook_attribute.test",
 				ImportState:                          true,
 				ImportStateId:                        property,

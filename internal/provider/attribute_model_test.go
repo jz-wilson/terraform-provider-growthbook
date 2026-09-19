@@ -89,6 +89,32 @@ func TestAttributeRequestFromModel_createIncludesPropertyAndDatatype(t *testing.
 	}
 }
 
+func TestAttributeRequestFromModel_updateNullListsClear(t *testing.T) {
+	// projects/tags are Optional-only, not Computed: a null plan value on
+	// Update means "the config no longer lists any", not "unconfigured".
+	// Unlike Create (where null and "omit" are the same thing, since there
+	// is nothing to clear yet), Update must send an explicit empty list or
+	// GrowthBook has no signal to remove a previously configured value and
+	// the resource drifts forever.
+	model := AttributeResourceModel{
+		Property: types.StringValue("plan_tier"),
+		Datatype: types.StringValue("string"),
+		Projects: types.SetNull(types.StringType),
+		Tags:     types.SetNull(types.StringType),
+	}
+
+	req, diags := attributeRequestFromModel(context.Background(), model, false)
+	if diags.HasError() {
+		t.Fatalf("attributeRequestFromModel() diags = %v", diags)
+	}
+	if req.Projects == nil || len(*req.Projects) != 0 {
+		t.Errorf("req.Projects = %v, want a non-nil pointer to an empty slice for a null Update plan", req.Projects)
+	}
+	if req.Tags == nil || len(*req.Tags) != 0 {
+		t.Errorf("req.Tags = %v, want a non-nil pointer to an empty slice for a null Update plan", req.Tags)
+	}
+}
+
 func TestAttributeRequestFromModel_updateOmitsProperty(t *testing.T) {
 	model := AttributeResourceModel{
 		Property: types.StringValue("plan_tier"),

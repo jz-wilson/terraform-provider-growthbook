@@ -87,6 +87,72 @@ resource "growthbook_attribute" "plan_tier" {
 	})
 }
 
+// TestAccAttributeResource_clearsListsOnRemoval proves that removing
+// projects/tags from config (which plans as null, since they are
+// Optional-only, not Computed) sends an explicit "[]" on Update rather than
+// omitting the fields - the fix for the inconsistent-result-after-apply bug
+// an omission would cause (GrowthBook would keep the old list, and the
+// provider's post-apply Read would then disagree with the null the plan
+// promised).
+func TestAccAttributeResource_clearsListsOnRemoval(t *testing.T) {
+	t.Setenv("TF_ACC", "1")
+
+	var lastPutBody map[string]any
+	server := newFakeAttributeServer(func(body []byte) {
+		_ = json.Unmarshal(body, &lastPutBody)
+	})
+	t.Cleanup(server.Close)
+	t.Setenv("GROWTHBOOK_API_URL", server.URL)
+	t.Setenv("GROWTHBOOK_API_KEY", "test-key")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "growthbook_attribute" "plan_tier" {
+  property = "plan_tier"
+  datatype = "string"
+  projects = ["proj_1"]
+  tags     = ["billing"]
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("growthbook_attribute.plan_tier", "projects.#", "1"),
+					resource.TestCheckResourceAttr("growthbook_attribute.plan_tier", "tags.#", "1"),
+				),
+			},
+			{
+				Config: `
+resource "growthbook_attribute" "plan_tier" {
+  property = "plan_tier"
+  datatype = "string"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("growthbook_attribute.plan_tier", "projects"),
+					resource.TestCheckNoResourceAttr("growthbook_attribute.plan_tier", "tags"),
+				),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+		},
+	})
+
+	if lastPutBody == nil {
+		t.Fatal("no PUT request observed")
+	}
+	projects, ok := lastPutBody["projects"].([]any)
+	if !ok || len(projects) != 0 {
+		t.Errorf("PUT body projects = %v, want an explicit empty list", lastPutBody["projects"])
+	}
+	tags, ok := lastPutBody["tags"].([]any)
+	if !ok || len(tags) != 0 {
+		t.Errorf("PUT body tags = %v, want an explicit empty list", lastPutBody["tags"])
+	}
+}
+
 // TestAccAttributeResource_enumRequiredValidation confirms the config
 // validator catches datatype = "enum" with no enum set at plan time, before
 // any request reaches the API.
@@ -155,17 +221,28 @@ resource "growthbook_attribute" "plan_tier" {
 	if lastPutBody == nil {
 		t.Fatal("no PUT request observed")
 	}
-	// archived/hashAttribute/projects/tags have no UseStateForUnknown plan
-	// modifier, so an unconfigured value plans as unknown and is omitted
-	// outright. description/enum/format do have the modifier (so an
-	// explicit "" set through config round-trips instead of drifting to
-	// null forever, matching project.go's identical description field) and
-	// are resent with their last known value instead - harmless, since
-	// that value is exactly what the server already has.
-	for _, key := range []string{"archived", "hashAttribute", "projects", "tags"} {
+	// archived/hashAttribute have no UseStateForUnknown plan modifier, so an
+	// unconfigured value plans as unknown and is omitted outright.
+	// description/enum/format do have the modifier (so an explicit "" set
+	// through config round-trips instead of drifting to null forever,
+	// matching project.go's identical description field) and are resent
+	// with their last known value instead - harmless, since that value is
+	// exactly what the server already has. projects/tags are Optional-only
+	// (not Computed): a null plan always means "no projects/tags" on
+	// Update, so they are sent as an explicit "[]" here too, matching what
+	// was already true (never configured) - see
+	// TestAccAttributeResource_clearsListsOnRemoval for the case that
+	// actually clears a previously configured list.
+	for _, key := range []string{"archived", "hashAttribute"} {
 		if _, ok := lastPutBody[key]; ok {
 			t.Errorf("PUT body = %v, want no %q key when unconfigured", lastPutBody, key)
 		}
+	}
+	if projects, ok := lastPutBody["projects"].([]any); !ok || len(projects) != 0 {
+		t.Errorf("PUT body projects = %v, want an empty list", lastPutBody["projects"])
+	}
+	if tags, ok := lastPutBody["tags"].([]any); !ok || len(tags) != 0 {
+		t.Errorf("PUT body tags = %v, want an empty list", lastPutBody["tags"])
 	}
 	if lastPutBody["description"] != "only this changed" {
 		t.Errorf("PUT body description = %v, want %q", lastPutBody["description"], "only this changed")
