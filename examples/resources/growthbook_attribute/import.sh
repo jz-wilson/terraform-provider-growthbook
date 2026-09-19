@@ -1,0 +1,1 @@
+terraform import growthbook_attribute.plan_tier plan_tier
