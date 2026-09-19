@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -145,8 +146,11 @@ func featureRuleSchema() schema.ListNestedAttribute {
 								MarkdownDescription: "Whether the rule is enabled or disabled once this transition activates.",
 							},
 							"timestamp": schema.StringAttribute{
-								Optional:            true,
-								MarkdownDescription: "RFC3339 timestamp when this transition activates. Omit for an open-ended transition.",
+								CustomType: timetypes.RFC3339Type{},
+								Optional:   true,
+								MarkdownDescription: "RFC3339 timestamp when this transition activates. Omit for an open-ended transition. " +
+									"Equivalent instants that differ only in formatting (e.g. a `Z` suffix vs. `+00:00`, or a " +
+									"GrowthBook-added `.000` fraction) do not produce a diff.",
 							},
 						},
 					},

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -37,10 +38,14 @@ type prerequisiteModel struct {
 }
 
 // scheduleRuleModel is one on/off transition in a rule's schedule. A null
-// Timestamp is an open-ended transition.
+// Timestamp is an open-ended transition. Timestamp uses timetypes.RFC3339
+// rather than a plain types.String so that equivalent instants which differ
+// only in formatting (GrowthBook round-trips a configured
+// "2026-06-01T00:00:00Z" as "2026-06-01T00:00:00.000Z") don't produce a
+// diff or an inconsistent-result-after-apply error.
 type scheduleRuleModel struct {
-	Enabled   types.Bool   `tfsdk:"enabled"`
-	Timestamp types.String `tfsdk:"timestamp"`
+	Enabled   types.Bool        `tfsdk:"enabled"`
+	Timestamp timetypes.RFC3339 `tfsdk:"timestamp"`
 }
 
 // ruleModel is one entry of a feature's ordered rules list.
@@ -197,7 +202,7 @@ func scheduleRulesToAPI(rules []scheduleRuleModel) []growthbook.ScheduleRule {
 	return out
 }
 
-func scheduleRulesFromAPI(rules []growthbook.ScheduleRule) []scheduleRuleModel {
+func scheduleRulesFromAPI(rules []growthbook.ScheduleRule, diags *diag.Diagnostics) []scheduleRuleModel {
 	// Same normalization as prerequisitesFromAPI: treat an empty response
 	// array as absent so an unconfigured attribute reads back as null.
 	if len(rules) == 0 {
@@ -205,13 +210,9 @@ func scheduleRulesFromAPI(rules []growthbook.ScheduleRule) []scheduleRuleModel {
 	}
 	out := make([]scheduleRuleModel, 0, len(rules))
 	for _, sr := range rules {
-		m := scheduleRuleModel{Enabled: types.BoolValue(sr.Enabled)}
-		if sr.Timestamp != nil {
-			m.Timestamp = types.StringValue(*sr.Timestamp)
-		} else {
-			m.Timestamp = types.StringNull()
-		}
-		out = append(out, m)
+		ts, d := timetypes.NewRFC3339PointerValue(sr.Timestamp)
+		diags.Append(d...)
+		out = append(out, scheduleRuleModel{Enabled: types.BoolValue(sr.Enabled), Timestamp: ts})
 	}
 	return out
 }
@@ -272,7 +273,7 @@ func ruleFromAPI(ctx context.Context, r growthbook.FeatureRule, diags *diag.Diag
 		ExperimentID:    optionalString(r.ExperimentID),
 		RuleID:          types.StringValue(r.ID),
 		ScheduleType:    optionalString(r.ScheduleType),
-		ScheduleRules:   scheduleRulesFromAPI(r.ScheduleRules),
+		ScheduleRules:   scheduleRulesFromAPI(r.ScheduleRules, diags),
 	}
 	// enabled is Optional+Computed with a default of true, matching
 	// GrowthBook's own default for a rule that doesn't specify it.

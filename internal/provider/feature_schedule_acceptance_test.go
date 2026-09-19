@@ -55,6 +55,14 @@ resource "growthbook_feature" "test" {
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_type", "schedule"),
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.#", "2"),
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.0.enabled", "true"),
+					// The fake server normalizes this to millisecond
+					// precision the way real GrowthBook does (Mongo Date ->
+					// ISO). Terraform's semantic-equality handling for
+					// timetypes.RFC3339 treats that as unchanged from the
+					// configured value, so state keeps the configured
+					// literal rather than picking up the API's reformatting
+					// - proving the CustomType is wired up, not just present
+					// in the schema.
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.0.timestamp", "2026-01-01T00:00:00Z"),
 					resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.1.enabled", "false"),
 					resource.TestCheckNoResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.1.timestamp"),
@@ -107,6 +115,56 @@ resource "growthbook_feature" "test" {
   ]
 }
 `, featureID),
+			},
+		},
+	})
+}
+
+// TestAccFeatureResource_scheduleRulesNonUTCOffset proves that a timestamp
+// written with an explicit "+00:00" UTC offset (rather than a "Z" suffix)
+// round-trips against the fake server's GrowthBook-like normalization ("Z",
+// millisecond precision) without a diff. timetypes.RFC3339's semantic
+// equality specifically normalizes "Z" and "+00:00" as equivalent (see its
+// own doc comment); without it, this offset-vs-Z formatting difference,
+// compounded by the server's added ".000" fraction, would show as a
+// perpetual diff or fail apply's consistency check.
+func TestAccFeatureResource_scheduleRulesNonUTCOffset(t *testing.T) {
+	server, _ := newFakeFeatureServer()
+	defer server.Close()
+
+	t.Setenv("TF_ACC", "1")
+	t.Setenv("GROWTHBOOK_API_KEY", "secret_test")
+	t.Setenv("GROWTHBOOK_API_URL", server.URL)
+
+	const featureID = "ft_schedule_offset"
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fakeAPIProviderConfig() + fmt.Sprintf(`
+resource "growthbook_feature" "test" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+
+  rules = [
+    {
+      type             = "force"
+      all_environments = true
+      value            = "true"
+      schedule_type    = "schedule"
+      schedule_rules = [
+        { enabled = true, timestamp = "2026-01-01T00:00:00+00:00" },
+      ]
+    },
+  ]
+}
+`, featureID),
+				Check: resource.TestCheckResourceAttr("growthbook_feature.test", "rules.0.schedule_rules.0.timestamp", "2026-01-01T00:00:00+00:00"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
 			},
 		},
 	})

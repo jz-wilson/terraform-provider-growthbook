@@ -171,7 +171,7 @@ Required:
 
 Optional:
 
-- `timestamp` (String) RFC3339 timestamp when this transition activates. Omit for an open-ended transition.
+- `timestamp` (String) RFC3339 timestamp when this transition activates. Omit for an open-ended transition. Equivalent instants that differ only in formatting (e.g. a `Z` suffix vs. `+00:00`, or a GrowthBook-added `.000` fraction) do not produce a diff.
 
 
 <a id="nestedatt--rules--variations"></a>

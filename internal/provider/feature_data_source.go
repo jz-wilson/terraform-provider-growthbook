@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 
@@ -110,7 +111,7 @@ func (d *featureDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 							NestedObject: schema.NestedAttributeObject{
 								Attributes: map[string]schema.Attribute{
 									"enabled":   schema.BoolAttribute{Computed: true},
-									"timestamp": schema.StringAttribute{Computed: true},
+									"timestamp": schema.StringAttribute{CustomType: timetypes.RFC3339Type{}, Computed: true},
 								},
 							},
 						},
