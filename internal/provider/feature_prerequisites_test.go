@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -106,6 +107,63 @@ func TestRuleToAPIFromAPI_Prerequisites(t *testing.T) {
 	}
 	if len(back.Prerequisites) != 1 || back.Prerequisites[0].ID.ValueString() != prereqTestParentID {
 		t.Fatalf("ruleFromAPI() Prerequisites = %#v", back.Prerequisites)
+	}
+}
+
+func TestRequireRulePrerequisitesPersisted(t *testing.T) {
+	planWithPrereq := featureModel{
+		Rules: []ruleModel{{
+			Prerequisites: []prerequisiteModel{
+				{ID: types.StringValue(prereqTestParentID), Condition: types.StringValue(prereqTestCond)},
+			},
+		}},
+	}
+	planWithoutPrereq := featureModel{Rules: []ruleModel{{}}}
+
+	cases := []struct {
+		name      string
+		plan      featureModel
+		feature   *growthbook.Feature
+		wantError bool
+	}{
+		{
+			name:    "plan has none",
+			plan:    planWithoutPrereq,
+			feature: &growthbook.Feature{Rules: []growthbook.FeatureRule{{}}},
+		},
+		{
+			name: "persisted",
+			plan: planWithPrereq,
+			feature: &growthbook.Feature{Rules: []growthbook.FeatureRule{{
+				Prerequisites: []growthbook.FeaturePrerequisite{{ID: prereqTestParentID, Condition: prereqTestCond}},
+			}}},
+		},
+		{
+			name:      "silently dropped",
+			plan:      planWithPrereq,
+			feature:   &growthbook.Feature{Rules: []growthbook.FeatureRule{{}}},
+			wantError: true,
+		},
+		{
+			name:      "rule missing from response entirely",
+			plan:      planWithPrereq,
+			feature:   &growthbook.Feature{},
+			wantError: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			diags := requireRulePrerequisitesPersisted(tc.plan, tc.feature)
+			if diags.HasError() != tc.wantError {
+				t.Errorf("requireRulePrerequisitesPersisted() diags = %v, wantError %v", diags, tc.wantError)
+			}
+			if tc.wantError {
+				msg := diags[0].Detail()
+				if !strings.Contains(msg, "Enterprise plan") {
+					t.Errorf("error detail = %q, want mention of Enterprise plan", msg)
+				}
+			}
+		})
 	}
 }
 

@@ -81,7 +81,7 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 | `experimentId` | `rules[].experiment_id` | yes | Applies to `experiment-ref` only. |
 | `variations[].value` | `rules[].variations[].value` | yes | Applies to `experiment-ref` only. |
 | `variations[].variationId` | `rules[].variations[].variation_id` | yes | |
-| `prerequisites` (rule-level, `{id, condition}`) | `rules[].prerequisites[]` (`id`, `condition`) | yes | Gates the rule on another feature's value; a plain (non-pointer) list, since rules are always replaced wholesale on update. |
+| `prerequisites` (rule-level, `{id, condition}`) | `rules[].prerequisites[]` (`id`, `condition`) | yes | Gates the rule on another feature's value; a plain (non-pointer) list, since rules are always replaced wholesale on update. Requires GrowthBook Enterprise (`prerequisite-targeting`); on other plans GrowthBook drops it and the provider reports an error. |
 | `variations[].config` | `n/a` | no | Config-mode override pointer on an `experiment-ref` variation; not modeled, same Config-mode reason as `baseConfig` above. |
 | `config` | `n/a` | no | Config-mode override pointer on `force`/`rollout`; not modeled. |
 | `sparse` | `n/a` | no | JSON-only partial-merge semantics for `force`/`rollout`/`experiment-ref` values; not modeled, out of scope for 0.1. |

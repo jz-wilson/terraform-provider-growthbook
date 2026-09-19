@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -157,11 +158,15 @@ resource "growthbook_feature" "test" {
 	})
 }
 
-// TestAccFeatureResource_prerequisitesLive exercises feature-level (a set
-// of feature IDs) and rule-level ({id, condition}) prerequisites against a
-// real GrowthBook instance: add, change the rule-level condition, then
-// remove both, asserting the removal actually clears the server-side
-// value after a refresh rather than leaving it behind.
+// TestAccFeatureResource_prerequisitesLive exercises feature-level
+// prerequisites (a set of feature IDs) against a real GrowthBook instance:
+// add, then remove, asserting the removal actually clears the server-side
+// value after a refresh rather than leaving it behind. Rule-level
+// prerequisites are not exercised here: GrowthBook's "prerequisite-
+// targeting" is an Enterprise-only commercial feature and the free/
+// unlicensed CI instance silently drops it rather than erroring - see
+// TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive, which
+// asserts that behavior instead.
 func TestAccFeatureResource_prerequisitesLive(t *testing.T) {
 	if os.Getenv("GROWTHBOOK_LIVE") == "" {
 		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
@@ -190,67 +195,19 @@ resource "growthbook_feature" "child" {
   default_value = "false"
 
   prerequisites = [growthbook_feature.parent.id]
-
-  rules = [
-    {
-      type             = "force"
-      all_environments = true
-      value            = "true"
-      prerequisites = [
-        {
-          id        = growthbook_feature.parent.id
-          condition = jsonencode({ value = true })
-        },
-      ]
-    },
-  ]
 }
 `, childKey),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "1"),
 					resource.TestCheckTypeSetElemAttr("growthbook_feature.child", "prerequisites.*", parentKey),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "1"),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":true}`),
 				),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
 				},
 			},
 			{
-				// Change the rule-level condition.
-				Config: parentConfig + fmt.Sprintf(`
-resource "growthbook_feature" "child" {
-  id            = %q
-  value_type    = "boolean"
-  default_value = "false"
-
-  prerequisites = [growthbook_feature.parent.id]
-
-  rules = [
-    {
-      type             = "force"
-      all_environments = true
-      value            = "true"
-      prerequisites = [
-        {
-          id        = growthbook_feature.parent.id
-          condition = jsonencode({ value = false })
-        },
-      ]
-    },
-  ]
-}
-`, childKey),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.0.condition", `{"value":false}`),
-				),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
-				},
-			},
-			{
-				// Remove all prerequisites: assert they are actually gone
-				// after a refresh, not merely absent from this apply's plan.
+				// Remove it: assert it's actually gone after a refresh, not
+				// merely absent from this apply's plan.
 				Config: parentConfig + fmt.Sprintf(`
 resource "growthbook_feature" "child" {
   id            = %q
@@ -258,21 +215,9 @@ resource "growthbook_feature" "child" {
   default_value = "false"
 
   prerequisites = []
-
-  rules = [
-    {
-      type             = "force"
-      all_environments = true
-      value            = "true"
-      prerequisites    = []
-    },
-  ]
 }
 `, childKey),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "0"),
-					resource.TestCheckResourceAttr("growthbook_feature.child", "rules.0.prerequisites.#", "0"),
-				),
+				Check: resource.TestCheckResourceAttr("growthbook_feature.child", "prerequisites.#", "0"),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
 				},
@@ -288,17 +233,64 @@ resource "growthbook_feature" "child" {
   default_value = "false"
 
   prerequisites = []
+}
+`, childKey),
+			},
+		},
+	})
+}
+
+// TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive proves the
+// free-plan behavior for rule-level prerequisites against a real
+// GrowthBook instance: the API accepts the create request but silently
+// drops rules[0].prerequisites (GrowthBook's "prerequisite-targeting" is
+// Enterprise-only), and the provider must turn that into a clear error
+// instead of surfacing the Plugin Framework's confusing "element 0 has
+// vanished" consistency failure. The feature is created via the real API
+// before the error surfaces (Terraform never records it in state, since
+// Create never returns one), so cleanup relies on the tf-acc- sweeper
+// rather than a state-driven destroy.
+func TestAccFeatureResource_rulePrerequisitesRequiresEnterpriseLive(t *testing.T) {
+	if os.Getenv("GROWTHBOOK_LIVE") == "" {
+		t.Skip("set GROWTHBOOK_LIVE=1 to run acceptance tests against a real GrowthBook instance")
+	}
+	testAccPreCheck(t)
+
+	parentKey := acctest.RandomWithPrefix("tf-acc-")
+	childKey := acctest.RandomWithPrefix("tf-acc-")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "growthbook_feature" "parent" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
+}
+
+resource "growthbook_feature" "child" {
+  id            = %q
+  value_type    = "boolean"
+  default_value = "false"
 
   rules = [
     {
       type             = "force"
       all_environments = true
       value            = "true"
-      prerequisites    = []
+      prerequisites = [
+        {
+          id        = growthbook_feature.parent.id
+          condition = jsonencode({ value = true })
+        },
+      ]
     },
   ]
 }
-`, childKey),
+`, parentKey, childKey),
+				ExpectError: regexp.MustCompile(`Enterprise plan`),
 			},
 		},
 	})

@@ -124,7 +124,7 @@ Optional:
 - `environments` (Set of String)
 - `experiment_id` (String)
 - `hash_attribute` (String)
-- `prerequisites` (Attributes List) Gates evaluation on another feature's value. Omit to leave unmanaged; set to `[]` to clear. (see [below for nested schema](#nestedatt--rules--prerequisites))
+- `prerequisites` (Attributes List) Gates the rule on another feature's value. Omit to leave unmanaged; set to `[]` to clear. Requires GrowthBook Enterprise (the "prerequisite-targeting" commercial feature); on other plans GrowthBook silently drops it and the provider reports an error rather than let state drift. (see [below for nested schema](#nestedatt--rules--prerequisites))
 - `saved_groups` (Attributes List) (see [below for nested schema](#nestedatt--rules--saved_groups))
 - `value` (String)
 - `variations` (Attributes List) (see [below for nested schema](#nestedatt--rules--variations))

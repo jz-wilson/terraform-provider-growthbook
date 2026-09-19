@@ -42,8 +42,10 @@ func featurePrerequisitesSchema() schema.SetAttribute {
 // condition.
 func rulePrerequisiteSchema() schema.ListNestedAttribute {
 	return schema.ListNestedAttribute{
-		Optional:            true,
-		MarkdownDescription: "Gates evaluation on another feature's value. Omit to leave unmanaged; set to `[]` to clear.",
+		Optional: true,
+		MarkdownDescription: "Gates the rule on another feature's value. Omit to leave unmanaged; set to `[]` to clear. " +
+			"Requires GrowthBook Enterprise (the \"prerequisite-targeting\" commercial feature); on other plans " +
+			"GrowthBook silently drops it and the provider reports an error rather than let state drift.",
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"id": schema.StringAttribute{

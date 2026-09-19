@@ -5,7 +5,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -52,11 +54,39 @@ func (r *featureResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Unable to create GrowthBook feature", err.Error())
 		return
 	}
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	state := featureModelFromAPI(ctx, feature, &resp.Diagnostics)
 	echoUnmanagedCollections(&state, plan)
 	reconcilePrerequisites(&state, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// requireRulePrerequisitesPersisted reports a clear error when GrowthBook
+// silently drops rule-level prerequisites instead of storing them, which
+// happens on any plan below Enterprise (the license gates rule-level
+// "prerequisite-targeting" separately from feature-level "prerequisites",
+// and a sub-Enterprise org's write succeeds but the value never lands).
+// Without this check, the Plugin Framework instead reports a confusing
+// "element 0 has vanished" consistency error.
+func requireRulePrerequisitesPersisted(plan featureModel, feature *growthbook.Feature) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for i, r := range plan.Rules {
+		if len(r.Prerequisites) == 0 {
+			continue
+		}
+		if i >= len(feature.Rules) || len(feature.Rules[i].Prerequisites) == 0 {
+			diags.AddError(
+				"GrowthBook did not store rule-level prerequisites",
+				fmt.Sprintf("GrowthBook did not store rules[%d].prerequisites. Rule-level prerequisite targeting "+
+					"requires an Enterprise plan (commercial feature \"prerequisite-targeting\").", i),
+			)
+		}
+	}
+	return diags
 }
 
 func (r *featureResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -119,6 +149,10 @@ func (r *featureResource) Update(ctx context.Context, req resource.UpdateRequest
 	feature, err := r.client.UpdateFeature(ctx, plan.ID.ValueString(), updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to update GrowthBook feature", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(requireRulePrerequisitesPersisted(plan, feature)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
