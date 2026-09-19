@@ -43,7 +43,7 @@ func (r *SavedGroupResource) Metadata(_ context.Context, req resource.MetadataRe
 
 func (r *SavedGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target.",
+		MarkdownDescription: "Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target. Destroy archives the group before deleting it (GrowthBook requires this) and fails with the API's HTTP 422 if the group is still referenced by a feature, experiment, or another saved group.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -209,6 +209,14 @@ func (r *SavedGroupResource) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
+// Delete archives the saved group before deleting it: GrowthBook refuses
+// DELETE /v1/saved-groups/{id} on a group that isn't archived first (HTTP
+// 400). If the group is already gone, the archive call itself reports
+// IsNotFound and delete is skipped. Any other archive error (for example,
+// already archived) is not fatal here; if it actually blocked archiving
+// (HTTP 422, the group is still referenced by a feature, experiment, or
+// another saved group), the delete call below surfaces that as its own
+// error.
 func (r *SavedGroupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data SavedGroupModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -216,7 +224,12 @@ func (r *SavedGroupResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	if err := r.client.DeleteSavedGroup(ctx, data.ID.ValueString()); err != nil && !growthbook.IsNotFound(err) {
+	id := data.ID.ValueString()
+	if _, err := r.client.ArchiveSavedGroup(ctx, id); err != nil && growthbook.IsNotFound(err) {
+		return
+	}
+
+	if err := r.client.DeleteSavedGroup(ctx, id); err != nil && !growthbook.IsNotFound(err) {
 		resp.Diagnostics.AddError("Unable to delete GrowthBook saved group", err.Error())
 	}
 }

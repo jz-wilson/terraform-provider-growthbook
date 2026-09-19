@@ -3,12 +3,12 @@
 page_title: "growthbook_saved_group Resource - growthbook"
 subcategory: ""
 description: |-
-  Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target.
+  Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target. Destroy archives the group before deleting it (GrowthBook requires this) and fails with the API's HTTP 422 if the group is still referenced by a feature, experiment, or another saved group.
 ---
 
 # growthbook_saved_group (Resource)
 
-Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target.
+Manages a GrowthBook saved group, a reusable list of attribute values or a condition that feature rules can target. Destroy archives the group before deleting it (GrowthBook requires this) and fails with the API's HTTP 422 if the group is still referenced by a feature, experiment, or another saved group.
 
 ## Example Usage
 

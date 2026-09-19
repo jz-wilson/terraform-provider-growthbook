@@ -4,16 +4,20 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+
+	growthbook "github.com/jz-wilson/growthbook-go"
 )
 
 // fakeSavedGroupServer is a minimal in-memory stand-in for the GrowthBook
@@ -71,6 +75,10 @@ func (f *fakeSavedGroupServer) handleItem(w http.ResponseWriter, r *http.Request
 	defer f.mu.Unlock()
 
 	id := r.URL.Path[len("/v1/saved-groups/"):]
+	if strings.HasSuffix(id, "/archive") {
+		f.handleArchive(w, strings.TrimSuffix(id, "/archive"))
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
@@ -104,8 +112,15 @@ func (f *fakeSavedGroupServer) handleItem(w http.ResponseWriter, r *http.Request
 		f.byID[id] = merged
 		sdkWriteJSON(w, map[string]any{"savedGroup": merged})
 	case http.MethodDelete:
-		if _, ok := f.byID[id]; !ok {
+		group, ok := f.byID[id]
+		if !ok {
 			sdkWriteAPIError(w)
+			return
+		}
+		// Mirrors the real API: refuses to delete a saved group that isn't
+		// archived first.
+		if archived, _ := group["archived"].(bool); !archived {
+			http.Error(w, "must be archived before it can be deleted", http.StatusBadRequest)
 			return
 		}
 		delete(f.byID, id)
@@ -113,6 +128,18 @@ func (f *fakeSavedGroupServer) handleItem(w http.ResponseWriter, r *http.Request
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleArchive serves POST /v1/saved-groups/{id}/archive.
+func (f *fakeSavedGroupServer) handleArchive(w http.ResponseWriter, id string) {
+	group, ok := f.byID[id]
+	if !ok {
+		sdkWriteAPIError(w)
+		return
+	}
+	group["archived"] = true
+	f.byID[id] = group
+	sdkWriteJSON(w, map[string]any{"savedGroup": group})
 }
 
 // savedGroupFromRequest builds the stored/response representation of a saved
@@ -357,4 +384,36 @@ resource "growthbook_saved_group" "test" {
 			},
 		},
 	})
+}
+
+// TestFakeSavedGroupServer_deleteRequiresArchive checks the fake server's
+// contract mirrors the real API: DELETE fails until the group is archived,
+// and ArchiveSavedGroup then DeleteSavedGroup (SavedGroupResource.Delete's
+// sequence) succeeds.
+func TestFakeSavedGroupServer_deleteRequiresArchive(t *testing.T) {
+	fake := newFakeSavedGroupServer()
+	srv := fake.httptestServer()
+	defer srv.Close()
+
+	c, err := growthbook.New(growthbook.Credentials{APIKey: "secret_test", APIURL: srv.URL})
+	if err != nil {
+		t.Fatalf("growthbook.New() error = %v", err)
+	}
+	ctx := context.Background()
+
+	created, err := c.CreateSavedGroup(ctx, growthbook.SavedGroupRequest{Name: "n", Type: "list", AttributeKey: "userId"})
+	if err != nil {
+		t.Fatalf("CreateSavedGroup() error = %v", err)
+	}
+
+	if err := c.DeleteSavedGroup(ctx, created.ID); err == nil {
+		t.Fatal("DeleteSavedGroup() before archive: got nil error, want a failure")
+	}
+
+	if _, err := c.ArchiveSavedGroup(ctx, created.ID); err != nil {
+		t.Fatalf("ArchiveSavedGroup() error = %v", err)
+	}
+	if err := c.DeleteSavedGroup(ctx, created.ID); err != nil {
+		t.Fatalf("DeleteSavedGroup() after archive: error = %v", err)
+	}
 }

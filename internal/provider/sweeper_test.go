@@ -168,6 +168,11 @@ func sweepSavedGroups(_ string) error {
 		if !strings.HasPrefix(g.Name, acctestNamePrefix) {
 			continue
 		}
+		// GrowthBook refuses to delete a saved group that isn't archived
+		// first; mirrors SavedGroupResource.Delete.
+		if _, archErr := client.ArchiveSavedGroup(ctx, g.ID); archErr != nil && growthbook.IsNotFound(archErr) {
+			continue
+		}
 		if delErr := client.DeleteSavedGroup(ctx, g.ID); delErr != nil && !growthbook.IsNotFound(delErr) {
 			errs = append(errs, fmt.Errorf("deleting saved group %q (%s): %w", g.Name, g.ID, delErr))
 		}
