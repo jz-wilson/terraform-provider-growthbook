@@ -6,16 +6,14 @@ FEATURES:
 
 * **New Resource:** `growthbook_attribute`
 * **New Data Source:** `growthbook_attribute`
-* **`growthbook_feature`:** Add feature-level `prerequisites` (a set of feature IDs) and rule-level `prerequisites` (`id`, `condition`), gating a feature or a rule on another feature's value. Rule-level prerequisites require GrowthBook Enterprise.
-* **New Resource/Data Source:** `growthbook_saved_group`
+* **New Resource:** `growthbook_saved_group`
+* **New Data Source:** `growthbook_saved_group`
+* resource/growthbook_feature: Add feature-level `prerequisites` (a set of feature IDs that must evaluate to `true`) and rule-level `rules.prerequisites` (`id`, `condition`). Rule-level prerequisites require GrowthBook Enterprise; on other plans GrowthBook drops them and the provider reports an error.
 
 BUG FIXES:
 
-* **`growthbook_feature`:** Fix `rules`/`environments` reading back as non-null and drifting forever when neither was ever set in config. GrowthBook gives every feature a default per-environment entry (e.g. `production`) even when a feature never configures `environments`, so a plan check that only cleared these attributes when the API's response was empty missed that case and reported spurious changes on every subsequent plan.
-
-BUG FIXES:
-
-* `growthbook_environment`: removing `projects` from config now clears it on GrowthBook instead of leaving the prior list in place and failing apply with "provider produced inconsistent result after apply".
+* resource/growthbook_environment: Removing `projects` from configuration now clears them in GrowthBook instead of failing apply with "Provider produced inconsistent result after apply".
+* resource/growthbook_feature: Fix perpetual diffs on `environments` and `rules` when they are not set in configuration. GrowthBook returns a default per-environment entry for every feature.
 
 ## 0.1.0 (September 18, 2026)
 
