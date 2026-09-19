@@ -112,6 +112,7 @@ func (p *GrowthBookProvider) Resources(_ context.Context) []func() resource.Reso
 		NewProjectResource,
 		NewFeatureResource,
 		newSDKConnectionResource,
+		NewAttributeResource,
 	}
 }
 
@@ -124,6 +125,7 @@ func (p *GrowthBookProvider) DataSources(_ context.Context) []func() datasource.
 		NewFeatureDataSource,
 		newSDKConnectionDataSource,
 		newSDKConnectionsDataSource,
+		NewAttributeDataSource,
 	}
 }
 

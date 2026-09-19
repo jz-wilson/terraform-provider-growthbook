@@ -158,3 +158,17 @@ The provider models three rule types: `force`, `rollout`, and `experiment-ref`. 
 - **Experiments API** - GrowthBook's experiments (as opposed to experiment-ref rules pointing at them) have no dedicated resource or data source in this provider at all; only references to experiment ids appear inside feature rules and SDK connection settings.
 - **Saved groups API** - saved groups are referenced by id/match type inside feature rules (`saved_groups`), but there is no `growthbook_saved_group` resource or data source to create or manage the groups themselves.
 - **Organization/member/team management APIs** - no resource or data source in this provider manages organization settings, members, teams, or roles.
+
+## growthbook_attribute
+
+| API Field | Terraform Attribute | Supported | Notes |
+|---|---|---|---|
+| `property` | `property` | yes | Identifier. `RequiresReplace`. The API has no GET-by-id; `growthbook-go`'s `GetAttribute` lists and filters. |
+| `datatype` | `datatype` | yes | Enum `boolean`/`string`/`number`/`secureString`/`enum`/`string[]`/`number[]`/`secureString[]`. Not `RequiresReplace`: the API's `putAttribute` accepts a datatype change and updates in place. |
+| `description` | `description` | yes | Optional+computed; explicit `""` clears it, matching `growthbook_project`. |
+| `hashAttribute` | `hash_attribute` | yes | |
+| `archived` | `archived` | yes | |
+| `enum` | `enum` | yes | Comma-separated string, not a list, per the API schema. Required by the API when `datatype` is `enum`; enforced client-side by a `ConfigValidator` so a bad config fails at `terraform plan` instead of a 400 from the API. |
+| `format` | `format` | yes | Enum `version`/`date`/`isoCountryCode` (or unset). |
+| `projects` | `projects` | yes | Empty/omitted normalized to null by the provider, matching `growthbook_environment`. |
+| `tags` | `tags` | yes | Same normalization as `projects`. |

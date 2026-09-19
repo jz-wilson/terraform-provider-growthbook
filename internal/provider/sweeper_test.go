@@ -37,6 +37,10 @@ func init() {
 		Name: "growthbook_sdk_connection",
 		F:    sweepSDKConnections,
 	})
+	resource.AddTestSweepers("growthbook_attribute", &resource.Sweeper{
+		Name: "growthbook_attribute",
+		F:    sweepAttributes,
+	})
 }
 
 // sweeperClient builds a client from the same GROWTHBOOK_API_KEY /
@@ -111,6 +115,32 @@ func sweepSDKConnections(_ string) error {
 		}
 		if delErr := client.DeleteSDKConnection(ctx, conn.ID); delErr != nil && !growthbook.IsNotFound(delErr) {
 			errs = append(errs, fmt.Errorf("deleting SDK connection %q (%s): %w", conn.Name, conn.ID, delErr))
+		}
+	}
+	return joinErrors(errs)
+}
+
+// sweepAttributes deletes every attribute whose property starts with
+// tf-acc-.
+func sweepAttributes(_ string) error {
+	client, err := sweeperClient()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+
+	attrs, err := client.ListAttributes(ctx)
+	if err != nil {
+		return fmt.Errorf("listing attributes to sweep: %w", err)
+	}
+
+	var errs []error
+	for _, attr := range attrs {
+		if !strings.HasPrefix(attr.Property, acctestNamePrefix) {
+			continue
+		}
+		if delErr := client.DeleteAttribute(ctx, attr.Property); delErr != nil && !growthbook.IsNotFound(delErr) {
+			errs = append(errs, fmt.Errorf("deleting attribute %q: %w", attr.Property, delErr))
 		}
 	}
 	return joinErrors(errs)

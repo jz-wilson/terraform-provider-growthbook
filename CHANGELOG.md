@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (Unreleased)
+
+FEATURES:
+
+* **New Resource:** `growthbook_attribute`
+* **New Data Source:** `growthbook_attribute`
+
 ## 0.1.0 (September 18, 2026)
 
 FEATURES:
